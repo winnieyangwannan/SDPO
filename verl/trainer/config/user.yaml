@@ -2,14 +2,15 @@ defaults:
   - _self_
 
 vars:
-  dir: /users/${oc.env:USER}/SDPO
+  dir: /checkpoint/agentic-models/winnieyangwn/SDPO/outputs
+  data_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/datasets
   task: ${oc.env:TASK}
-  log_dir: /users/${oc.env:USER}/output
-  ckpt_dir: /capstor/scratch/cscs/${oc.env:USER}/ttrl_runs/${vars.task}
+  log_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/logs
+  ckpt_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/checkpoints
 
 data:
-  train_files: ["${vars.dir}/${vars.task}/train.parquet"]
-  val_files: ["${vars.dir}/${vars.task}/test.parquet"]
+  train_files: ["${vars.data_dir}/${vars.task}/train.parquet"]
+  val_files: ["${vars.data_dir}/${vars.task}/test.parquet"]
   filter_overlong_prompts: True
   max_prompt_length: 2048
   max_response_length: 8192
@@ -37,14 +38,14 @@ actor_rollout_ref:
     val_kwargs:
       top_p: 0.95
       temperature: 0.6
-      n: 4
+      n: 16
       do_sample: True
 
 algorithm:
   use_kl_in_reward: False
 
 custom_reward_function:
-  path: /users/${oc.env:USER}/SDPO/verl/utils/reward_score/feedback/__init__.py
+  path: /home/${oc.env:USER}/SDPO/verl/utils/reward_score/feedback/__init__.py
 
 critic:
   model:

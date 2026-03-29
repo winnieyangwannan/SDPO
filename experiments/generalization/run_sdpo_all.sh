@@ -59,12 +59,11 @@ submit_job() {
 
     # Define the environment setup and command execution
     # We use the user's home directory dynamically
-    local setup_cmds="pip install word2number latex2sympy2 math-verify[antlr4_9_3]==0.8.0; \
-pip install -e /users/$USER/SDPO; \
-pip install --upgrade wandb; \
-export PYTHONPATH=/users/$USER/SDPO:\$PYTHONPATH"
+    local setup_cmds="eval \"\$(conda shell.bash hook)\"; \
+conda activate sdpo2; \
+export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH"
 
-    local run_cmd="bash /users/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
+    local run_cmd="bash /home/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
 
     local wrapped_cmd="srun bash -c '$setup_cmds; $run_cmd'"
 
@@ -80,8 +79,8 @@ export PYTHONPATH=/users/$USER/SDPO:\$PYTHONPATH"
         --gpus-per-node="$GPUS_PER_NODE"
         --mem="$MEM"
         --cpus-per-task="$CPUS_PER_TASK"
-        --output="/users/$USER/output/SDPO/%j.log"
-        --error="/users/$USER/output/SDPO/%j.err"
+        --output="/checkpoint/agentic-models/$USER/output/SDPO/%j.log"
+        --error="/checkpoint/agentic-models/$USER/output/SDPO/%j.err"
         --wrap="$wrapped_cmd"
     )
 

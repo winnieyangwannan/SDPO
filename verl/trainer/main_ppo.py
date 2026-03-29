@@ -74,7 +74,7 @@ def run_ppo(config, task_runner_class=None) -> None:
         runtime_env = OmegaConf.merge(default_runtime_env, runtime_env_kwargs)
         ray_init_kwargs = OmegaConf.create({**ray_init_kwargs, "runtime_env": runtime_env})
         print(f"ray init kwargs: {ray_init_kwargs}")
-        ray.init(**OmegaConf.to_container(ray_init_kwargs))
+        ray.init(include_dashboard=False, **OmegaConf.to_container(ray_init_kwargs))
 
     if task_runner_class is None:
         task_runner_class = ray.remote(num_cpus=1)(TaskRunner)  # please make sure main_task is not scheduled on head

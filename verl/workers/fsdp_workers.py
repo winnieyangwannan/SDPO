@@ -380,6 +380,8 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                 )
                 match auto_class:
                     case "AutoModelForVision2Seq":
+                        if AutoModelForVision2Seq is None:
+                            raise ImportError("AutoModelForVision2Seq requires a newer version of transformers")
                         actor_module_class = AutoModelForVision2Seq
                     case "AutoModelForCausalLM":
                         actor_module_class = AutoModelForCausalLM
@@ -388,7 +390,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     case _:
                         actor_module_class = AutoModel
             else:
-                if type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
+                if AutoModelForVision2Seq is not None and type(actor_model_config) in AutoModelForVision2Seq._model_mapping.keys():
                     actor_module_class = AutoModelForVision2Seq
                 elif type(actor_model_config) in AutoModelForCausalLM._model_mapping.keys():
                     actor_module_class = AutoModelForCausalLM
