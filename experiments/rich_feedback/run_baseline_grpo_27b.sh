@@ -16,15 +16,15 @@ fi
 CONFIG_NAME="baseline_grpo"
 BASE_JOB_NAME="grpo"
 
-ACCOUNT="agentic-models"
-QOS="h200_agentic-models_high"
+ACCOUNT="aira_ws2" # #"agentic-models"
+QOS="h200_coding_shared" #"h200_agentic-models_high" # "h200_aira_ws1_high" 
 
 DATA_PATHS=(
     "lcb_v6"
 )
 
 # Fixed Slurm resources
-NODES=1
+NODES=2
 TIME="168:00:00"
 NTASKS_PER_NODE=1
 GPUS_PER_NODE=8
@@ -34,12 +34,12 @@ CPUS_PER_TASK=96
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
 ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(8)
+MINI_BATCH_SIZES=(16)
 
 LRS=(1e-6)
 SEEDS=(42 123 456)
 MODEL_PATHS=(
-    "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-9B"
+    "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-27B"
 )
 
 # =============================================================================
@@ -114,7 +114,10 @@ actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.data_loader_seed=$SEED \
 algorithm.rollout_correction.rollout_is=token \
 actor_rollout_ref.rollout.val_kwargs.n=16 \
-trainer.total_training_steps=300"
+trainer.total_training_steps=300 \
+trainer.nnodes=2 \
+actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
+actor_rollout_ref.model.enable_gradient_checkpointing=True"
 
                             # 3. Submit
                             submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"

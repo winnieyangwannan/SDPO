@@ -55,7 +55,7 @@ critic:
     path: Qwen/Qwen3-8B
 
 trainer:
-  project_name: SDPO-${oc.env:USER}
+  project_name: SDPOproject_name
   group_name: ${oc.env:EXPERIMENT}
   experiment_name: ${oc.env:EXPERIMENT}
   n_gpus_per_node: 4

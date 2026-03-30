@@ -14,7 +14,7 @@ fi
 
 # Base settings
 CONFIG_NAME="sdpo"
-BASE_JOB_NAME="rlvr"
+BASE_JOB_NAME="sdpo"
 
 ACCOUNT="agentic-models"
 QOS="h200_agentic-models_high"
