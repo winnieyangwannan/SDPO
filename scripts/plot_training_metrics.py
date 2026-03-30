@@ -3,16 +3,31 @@
 Extract and plot training metrics from VERL/SDPO log files.
 
 Usage:
-    python scripts/plot_training_metrics.py /path/to/logfile.log
-    python scripts/plot_training_metrics.py /path/to/logfile.log --output plot.png
-    python scripts/plot_training_metrics.py /path/to/log1.log /path/to/log2.log --labels "SDPO" "GRPO"
+    # Using algorithm and slurm_id (recommended)
+    python scripts/plot_training_metrics.py --algorithm SDPO --slurm-id 5390564
+    
+    # Multiple slurm IDs
+    python scripts/plot_training_metrics.py --algorithm SDPO --slurm-id 5390564 5390565 5390566
+    python scripts/plot_training_metrics.py --algorithm GRPO --slurm-id 5386897 5386898 5386899
 
-    # Plot and save to file
-    python scripts/plot_training_metrics.py /checkpoint/agentic-models/$USER/output/SDPO/5386899.log -o /checkpoint/agentic-models/$USER/output/SDPO/SDPO/5386899_train_val.png
+    # Direct log file paths 
+    python scripts/plot_training_metrics.py /path/to/logfile.log
+    python scripts/plot_training_metrics.py /path/to/logfile.log --output plot.png 
+
+    python scripts/plot_training_metrics.py /checkpoint/agentic-models/winnieyangwn/output/SDPO/5386897.log --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/5386897_train_val.png
+    python scripts/plot_training_metrics.py /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/5397053_train_val.png
+
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397054.log \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397055.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/train_val_acc.png
 
 """
 
 import argparse
+import os
 import re
 from pathlib import Path
 from collections import defaultdict
@@ -20,6 +35,18 @@ from typing import Dict, List, Tuple, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def get_log_path(algorithm: str, slurm_id: str) -> str:
+    """Construct log path from algorithm and slurm_id."""
+    user = os.environ.get('USER', 'unknown')
+    return f"/checkpoint/agentic-models/{user}/output/{algorithm}/{slurm_id}.log"
+
+
+def get_output_path(algorithm: str, slurm_id: str) -> str:
+    """Construct output plot path from algorithm and slurm_id."""
+    user = os.environ.get('USER', 'unknown')
+    return f"/checkpoint/agentic-models/{user}/output/{algorithm}/{algorithm}/{slurm_id}_train_val.png"
 
 
 def parse_log_line(line: str) -> Optional[Dict[str, float]]:
@@ -187,31 +214,82 @@ def print_summary(log_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description='Plot training metrics from VERL log files')
-    parser.add_argument('log_files', nargs='+', help='Path to log file(s)')
+    parser.add_argument('log_files', nargs='*', help='Path to log file(s)')
+    parser.add_argument('--algorithm', '-a', help='Algorithm name (e.g., SDPO, GRPO)')
+    parser.add_argument('--slurm-id', '-s', nargs='+', help='Slurm job ID(s)')
     parser.add_argument('--labels', nargs='+', help='Labels for each log file')
-    parser.add_argument('--output', '-o', help='Output path for the plot (default: show)')
+    parser.add_argument('--output', '-o', help='Output path for the plot (default: auto-generate or show)')
     parser.add_argument('--metrics', nargs='+', help='Specific metrics to plot')
     parser.add_argument('--summary', action='store_true', help='Print summary instead of plotting')
     parser.add_argument('--list-metrics', action='store_true', help='List available metrics')
     
     args = parser.parse_args()
     
+    # Construct log paths from algorithm and slurm_id if provided
+    if args.algorithm and args.slurm_id:
+        # Collect all log paths and labels for combined plotting
+        log_files = [get_log_path(args.algorithm, sid) for sid in args.slurm_id]
+        labels = args.labels or [f"{args.algorithm}_{sid}" for sid in args.slurm_id]
+        
+        # Auto-generate output path if not provided
+        if args.output:
+            output_path = args.output
+        elif len(args.slurm_id) == 1:
+            output_path = get_output_path(args.algorithm, args.slurm_id[0])
+        else:
+            # For multiple IDs, create a combined output name
+            user = os.environ.get('USER', 'unknown')
+            ids_str = "_".join(args.slurm_id)
+            output_path = f"/checkpoint/agentic-models/{user}/output/{args.algorithm}/{args.algorithm}/{ids_str}_combined.png"
+        
+        print(f"\nProcessing {len(log_files)} log file(s):")
+        for lf in log_files:
+            print(f"  - {lf}")
+        print(f"Output path: {output_path}")
+        
+        if args.list_metrics:
+            data = extract_metrics_from_log(log_files[0])
+            print("Available metrics:")
+            for m in sorted(data.keys()):
+                print(f"  - {m}")
+            return
+        
+        if args.summary:
+            for log_path in log_files:
+                print_summary(log_path)
+            return
+        
+        plot_metrics(
+            log_files,
+            labels=labels,
+            output_path=output_path,
+            metrics_to_plot=args.metrics,
+        )
+        return
+    elif args.log_files:
+        log_files = args.log_files
+        output_path = args.output
+        labels = args.labels
+    else:
+        parser.error("Either provide log_files or --algorithm with --slurm-id")
+        return
+    
     if args.list_metrics:
-        data = extract_metrics_from_log(args.log_files[0])
+        data = extract_metrics_from_log(log_files[0])
         print("Available metrics:")
         for m in sorted(data.keys()):
             print(f"  - {m}")
         return
     
     if args.summary:
-        for log_path in args.log_files:
+        for log_path in log_files:
             print_summary(log_path)
         return
     
     plot_metrics(
-        args.log_files,
-        labels=args.labels,
-        output_path=args.output,
+        log_files,
+        labels=labels,
+        output_path=output_path,
         metrics_to_plot=args.metrics,
     )
 

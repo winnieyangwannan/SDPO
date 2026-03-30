@@ -70,8 +70,8 @@ submit_job() {
         --gpus-per-node="$GPUS_PER_NODE"
         --mem="$MEM"
         --cpus-per-task="$CPUS_PER_TASK"
-        --output="/checkpoint/agentic-models/$USER/output/SDPO/%j.log"
-        --error="/checkpoint/agentic-models/$USER/output/SDPO/%j.err"
+        --output="/checkpoint/agentic-models/$USER/output/SDPO/GRPO/%j.log"
+        --error="/checkpoint/agentic-models/$USER/output/SDPO/GRPO/%j.err"
         --wrap="$wrapped_cmd"
     )
 
@@ -114,6 +114,7 @@ actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.data_loader_seed=$SEED \
 algorithm.rollout_correction.rollout_is=token \
 actor_rollout_ref.rollout.val_kwargs.n=16 \
+actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=8192 \
 trainer.total_training_steps=300 \
 trainer.nnodes=2 \
 actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
