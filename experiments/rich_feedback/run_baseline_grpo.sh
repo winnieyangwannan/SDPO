@@ -37,6 +37,7 @@ ROLLOUT_BATCH_SIZES=(8)
 MINI_BATCH_SIZES=(8)
 
 LRS=(1e-6)
+SEEDS=(42 123 456)
 MODEL_PATHS=(
     "Qwen/Qwen3-8B"
 )
@@ -95,24 +96,29 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
         for LR in "${LRS[@]}"; do
             for MODEL_PATH in "${MODEL_PATHS[@]}"; do
                 for MINI_BATCH_SIZE in "${MINI_BATCH_SIZES[@]}"; do
-                    for DATA_PATH in "${DATA_PATHS[@]}"; do
-                        # 1. Construct the experiment name (must be unique)
-                        EXP_NAME="FINAL-GRPO-mbs-${MINI_BATCH_SIZE}-train${TRAIN_BATCH_SIZE}-rollout${ROLLOUT_BATCH_SIZE}-lr${LR}-model${MODEL_PATH}"
+                    for SEED in "${SEEDS[@]}"; do
+                        for DATA_PATH in "${DATA_PATHS[@]}"; do
+                            # 1. Construct the experiment name (must be unique)
+                            MODEL_NAME="${MODEL_PATH##*/}"  # Extract name after last "/" (e.g., Qwen/Qwen3-8B -> Qwen3-8B)
+                            EXP_NAME="FINAL-GRPO-mbs-${MINI_BATCH_SIZE}-train${TRAIN_BATCH_SIZE}-rollout${ROLLOUT_BATCH_SIZE}-lr${LR}-seed${SEED}-model${MODEL_NAME}"
 
-                        # 2. Construct the arguments string to pass to the training script
-                        # Format: key=value key2=value2 ...
-                        ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
+                            # 2. Construct the arguments string to pass to the training script
+                            # Format: key=value key2=value2 ...
+                            ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
 trainer.group_name=GRPO-rich-feedback \
 actor_rollout_ref.actor.optim.lr_warmup_steps=0 \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.actor.optim.lr=$LR \
 actor_rollout_ref.actor.ppo_mini_batch_size=$MINI_BATCH_SIZE \
 actor_rollout_ref.model.path=$MODEL_PATH \
+actor_rollout_ref.actor.data_loader_seed=$SEED \
 algorithm.rollout_correction.rollout_is=token \
-actor_rollout_ref.rollout.val_kwargs.n=4"
+actor_rollout_ref.rollout.val_kwargs.n=16 \
+trainer.total_training_steps=300"
 
-                        # 3. Submit
-                        submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"
+                            # 3. Submit
+                            submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"
+                        done
                     done
                 done
             done

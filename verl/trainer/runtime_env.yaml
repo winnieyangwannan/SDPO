@@ -3,3 +3,8 @@ excludes: ["/.git/"]
 env_vars:
   TORCH_NCCL_AVOID_RECORD_STREAMS: "1"
   CUDA_DEVICE_MAX_CONNECTIONS: "1"
+  HCCL_HOST_SOCKET_PORT_RANGE: "auto"
+  HCCL_NPU_SOCKET_PORT_RANGE: "auto"
+  LD_LIBRARY_PATH: "/storage/home/winnieyangwn/miniforge3/envs/verl/lib"
+  VLLM_NO_OSS_TRITON: "1"
+  VLLM_USE_V1: "0"

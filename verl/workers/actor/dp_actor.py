@@ -42,13 +42,19 @@ from verl.utils.ulysses import gather_outputs_and_unpad, slice_input_tensor, uly
 from verl.workers.actor import BasePPOActor
 from verl.workers.config import ActorConfig
 
-__all__ = ["DataParallelPPOActor"]
+__all__ = ["DataParallelPPOActor", "TrustRegionTeacher"]
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
 class TrustRegionTeacher(nn.Module):
+    """Trust-region teacher for SDPO.
+
+    Creates a mixture distribution between reference and student policy
+    for trust-region regularization.
+    """
+
     def __init__(self, ref_module: nn.Module, student_module: nn.Module, mix_coef: float) -> None:
         super().__init__()
         self.ref_module = ref_module
@@ -56,6 +62,8 @@ class TrustRegionTeacher(nn.Module):
         self.mix_coef = float(mix_coef)
 
     def forward(self, *args, **kwargs):
+        from types import SimpleNamespace
+
         ref_out = self.ref_module(*args, **kwargs)
         student_out = self.student_module(*args, **kwargs)
         ref_logits = ref_out.logits if hasattr(ref_out, "logits") else ref_out[0]
@@ -78,7 +86,7 @@ class DataParallelPPOActor(BasePPOActor):
         super().__init__(config)
         self.actor_module = actor_module
         self.actor_optimizer = actor_optimizer
-        self.teacher_module: Optional[nn.Module] = None
+        self.teacher_module: Optional[nn.Module] = None  # For SDPO
         role = "Ref" if actor_optimizer is None else "Actor"
 
         self.use_remove_padding = self.config.get("use_remove_padding", False)
@@ -130,6 +138,7 @@ class DataParallelPPOActor(BasePPOActor):
             )
 
     def _update_teacher(self) -> None:
+        """Update the teacher module for SDPO self-distillation."""
         self_distillation_cfg = getattr(self.config, "self_distillation", None)
         loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")
         if not self_distillation_cfg or loss_mode != "sdpo":
@@ -138,17 +147,11 @@ class DataParallelPPOActor(BasePPOActor):
         if teacher_regularization != "ema":
             return
         update_rate = getattr(self_distillation_cfg, "teacher_update_rate", 0.0)
-        if update_rate == 0.0:
+        if self.teacher_module is None or update_rate == 0.0:
             return
-        if self.teacher_module is None or self.teacher_module is self.actor_module:
-            raise ValueError("EMA teacher requires a separate teacher_module in the actor worker.")
         with torch.no_grad():
-            for teacher_param, student_param in zip(
-                self.teacher_module.parameters(),
-                self.actor_module.parameters(),
-            ):
-                student_data = student_param.data.to(device=teacher_param.device)
-                teacher_param.data.mul_(1.0 - update_rate).add_(student_data, alpha=update_rate)
+            for teacher_param, actor_param in zip(self.teacher_module.parameters(), self.actor_module.parameters()):
+                teacher_param.data.mul_(1 - update_rate).add_(actor_param.data, alpha=update_rate)
 
     @staticmethod
     def _has_non_empty_multi_modal_inputs(multi_modal_inputs) -> bool:
@@ -574,16 +577,22 @@ class DataParallelPPOActor(BasePPOActor):
             grad_norm = grad_norm.full_tensor()
 
         # if grad_norm is not finite, skip the update
-        if not torch.isfinite(grad_norm):
-            print(f"WARN: rank {torch.distributed.get_rank()} grad_norm is not finite: {grad_norm}")
-            self.actor_optimizer.zero_grad()
-            return grad_norm
-
         if self.scaler is not None:
             self.scaler.step(self.actor_optimizer)
             self.scaler.update()
         else:
-            self.actor_optimizer.step()
+            if not torch.isfinite(grad_norm):
+                print(f"WARN: rank {torch.distributed.get_rank()} grad_norm is not finite: {grad_norm}")
+                self.actor_optimizer.zero_grad()
+            else:
+                self.actor_optimizer.step()
+
+        # Clear cached weight scales for QAT (weights changed)
+        if getattr(self.actor_module, "_qat_fuse_enabled", False):
+            from verl.utils.qat import invalidate_all_scales
+
+            invalidate_all_scales(self.actor_module)
+
         return grad_norm
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
@@ -617,9 +626,7 @@ class DataParallelPPOActor(BasePPOActor):
         temperature = data.meta_info["temperature"]  # temperature must be in the data.meta_info to avoid silent error
         use_dynamic_bsz = data.meta_info["use_dynamic_bsz"]
         pad_token_id = data.meta_info.get("pad_token_id", 0)
-        has_multi_modal_inputs = self._has_non_empty_multi_modal_inputs(
-            data.non_tensor_batch.get("multi_modal_inputs")
-        )
+        has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
         select_keys = ["responses", "input_ids", "attention_mask", "position_ids"]
         non_tensor_select_keys = ["multi_modal_inputs"] if has_multi_modal_inputs else []
@@ -771,12 +778,12 @@ class DataParallelPPOActor(BasePPOActor):
                     else:
                         loss_scale_factor = 1 / self.gradient_accumulation
 
-                    teacher_regularization = self_distillation_cfg.get("teacher_regularization", "ema")
-                    if teacher_regularization == "trust-region" and self.use_fused_kernels:
+                    teacher_regularization = self_distillation_cfg.get("teacher_regularization", "ema") if self_distillation_enabled else None
+                    if self_distillation_enabled and teacher_regularization == "trust-region" and self.use_fused_kernels:
                         raise ValueError("trust-region teacher requires disabling fused kernels to access logits.")
                     # all return: (bsz, response_length)
-                    return_all_logps = self_distillation_cfg.full_logit_distillation and not self_distillation_cfg.distillation_topk
-                    distill_topk = self_distillation_cfg.distillation_topk if self_distillation_cfg.full_logit_distillation else None
+                    return_all_logps = self_distillation_enabled and self_distillation_cfg.full_logit_distillation and not self_distillation_cfg.distillation_topk
+                    distill_topk = self_distillation_cfg.distillation_topk if self_distillation_enabled and self_distillation_cfg.full_logit_distillation else None
                     outputs = self._forward_micro_batch(
                         model_inputs,
                         temperature=temperature,

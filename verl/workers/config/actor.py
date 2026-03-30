@@ -18,10 +18,11 @@ from typing import Any, Optional
 from omegaconf import MISSING
 
 from verl.base_config import BaseConfig
-from verl.trainer.config import CheckpointConfig
+from verl.trainer.config import CheckpointConfig, RolloutCorrectionConfig
 from verl.utils.profiler.config import ProfilerConfig
+from verl.utils.qat import QATConfig
 
-from .engine import FSDPEngineConfig, McoreEngineConfig
+from .engine import FSDPEngineConfig, McoreEngineConfig, TorchtitanEngineConfig, VeOmniEngineConfig
 from .model import HFModelConfig
 from .optimizer import OptimizerConfig
 
@@ -32,7 +33,39 @@ __all__ = [
     "ActorConfig",
     "FSDPActorConfig",
     "McoreActorConfig",
+    "VeOmniActorConfig",
+    "QATConfig",
+    "TorchTitanActorConfig",
 ]
+
+
+@dataclass
+class RouterReplayConfig(BaseConfig):
+    """Configuration for router replay in MoE models.
+
+    This configuration controls the routing behavior for Mixture of Experts (MoE) models,
+    allowing for deterministic training through route recording and replay.
+
+    Args:
+        mode (str): Router replay mode. Options: 'disabled', 'R2', 'R3'.
+            - 'disabled': No router replay functionality
+            - 'R2': Use Router Replay routing strategy
+            - 'R3': Use Rollout Router Replay routing strategy
+        record_file (Optional[str]): File path to save recorded routing decisions.
+            Required when mode is 'record', 'R2', or 'R3'.
+        replay_file (Optional[str]): File path to load recorded routing decisions for replay.
+            Required when mode is 'replay'.
+    """
+
+    mode: str = "disabled"
+    record_file: Optional[str] = None
+    replay_file: Optional[str] = None
+
+    def __post_init__(self):
+        """Validate router replay configuration."""
+        valid_modes = ["disabled", "R2", "R3"]
+        if self.mode not in valid_modes:
+            raise ValueError(f"Invalid router_replay mode: {self.mode}. Must be one of {valid_modes}")
 
 
 @dataclass
@@ -49,17 +82,15 @@ class SelfDistillationConfig(BaseConfig):
         distillation_topk (Optional[int]): If set, use top-k logits for distillation.
         distillation_add_tail (bool): Whether to add a tail bucket for top-k distillation.
         max_reprompt_len (int): Maximum length of the reprompted prompt.
-        reprompt_truncation (str): Truncation method for the reprompted prompt (recommended to use "right" or "error").
+        reprompt_truncation (str): Truncation method for the reprompted prompt.
         dont_reprompt_on_self_success (bool): Whether to not reprompt on self-success.
-        remove_thinking_from_demonstration (bool): Whether to remove <think>...</think> tags from successful demonstrations before reprompting.
+        remove_thinking_from_demonstration (bool): Whether to remove <think>...</think> tags from successful demonstrations.
         is_clip (Optional[float]): Clip value for distillation IS ratio; None disables IS weighting.
         reprompt_template (str): Template for reprompting. Uses {prompt}, {solution}, {feedback} placeholders.
-        solution_template (str): Template for formatting solution section. Uses {successful_previous_attempt} placeholder.
-        feedback_template (str): Template for formatting feedback section. Uses {feedback_raw} placeholder.
-        include_environment_feedback (bool): Whether to include environment feedback in reprompting for wrong attempts.
-        environment_feedback_only_without_solution (bool): If True, only use feedback when no solution is available (ignore feedback when solution exists).
-        reprompt_template_feedback (str): Template for reprompting with feedback but no solution.
-        reprompt_template_feedback_solution (str): Template for reprompting with both feedback and solution.
+        solution_template (str): Template for formatting solution section.
+        feedback_template (str): Template for formatting feedback section.
+        include_environment_feedback (bool): Whether to include environment feedback in reprompting.
+        environment_feedback_only_without_solution (bool): If True, only use feedback when no solution is available.
     """
 
     full_logit_distillation: bool = True
@@ -108,37 +139,6 @@ class SelfDistillationConfig(BaseConfig):
             raise ValueError(
                 f"self_distillation.distillation_topk must be a positive integer, got {self.distillation_topk}"
             )
-        if self.is_clip is not None and self.is_clip <= 0:
-            raise ValueError(f"self_distillation.is_clip must be positive, got {self.is_clip}")
-
-
-@dataclass
-class RouterReplayConfig(BaseConfig):
-    """Configuration for router replay in MoE models.
-
-    This configuration controls the routing behavior for Mixture of Experts (MoE) models,
-    allowing for deterministic training through route recording and replay.
-
-    Args:
-        mode (str): Router replay mode. Options: 'disabled', 'R2', 'R3'.
-            - 'disabled': No router replay functionality
-            - 'R2': Use Router Replay routing strategy
-            - 'R3': Use Rollout Router Replay routing strategy
-        record_file (Optional[str]): File path to save recorded routing decisions.
-            Required when mode is 'record', 'R2', or 'R3'.
-        replay_file (Optional[str]): File path to load recorded routing decisions for replay.
-            Required when mode is 'replay'.
-    """
-
-    mode: str = "disabled"
-    record_file: Optional[str] = None
-    replay_file: Optional[str] = None
-
-    def __post_init__(self):
-        """Validate router replay configuration."""
-        valid_modes = ["disabled", "R2", "R3"]
-        if self.mode not in valid_modes:
-            raise ValueError(f"Invalid router_replay mode: {self.mode}. Must be one of {valid_modes}")
 
 
 @dataclass
@@ -148,12 +148,13 @@ class PolicyLossConfig(BaseConfig):
     The inheritance from BaseConfig provides omegaconf.DictConfig-like interface for a dataclass config.
 
     Args:
-        loss_mode (str): Loss function mode. Options: 'vanilla', 'clip-cov', 'kl-cov', 'gpg', 'sdpo'.
+        loss_mode (str): Loss function mode. Options: 'vanilla', 'clip-cov', 'kl-cov', 'gpg'.
         clip_cov_ratio (float): Ratio of tokens to be clipped for clip-cov loss.
         clip_cov_lb (float): Lower bound for clip-cov loss.
         clip_cov_ub (float): Upper bound for clip-cov loss.
         kl_cov_ratio (float): Ratio of tokens to be applied KL penalty for kl-cov loss.
         ppo_kl_coef (float): KL divergence penalty coefficient.
+        rollout_correction (RolloutCorrectionConfig): Configuration for rollout correction.
     """
 
     loss_mode: str = "vanilla"
@@ -162,6 +163,7 @@ class PolicyLossConfig(BaseConfig):
     clip_cov_ub: float = 5.0
     kl_cov_ratio: float = 0.0002
     ppo_kl_coef: float = 0.1
+    rollout_correction: RolloutCorrectionConfig = field(default_factory=RolloutCorrectionConfig)
 
 
 @dataclass
@@ -255,6 +257,7 @@ class ActorConfig(BaseConfig):
     # batch_num_tokens: number of valid tokens in global batch
     # global_batch_size: global batch size
     global_batch_info: dict = field(default_factory=dict)
+    qat: QATConfig = field(default_factory=QATConfig)
 
     def __post_init__(self):
         """Validate actor configuration parameters."""
@@ -391,3 +394,50 @@ class FSDPActorConfig(ActorConfig):
                 raise ValueError(
                     "When using sequence parallelism for actor/ref policy, you must enable `use_remove_padding`."
                 )
+
+
+@dataclass
+class VeOmniActorConfig(ActorConfig):
+    """Configuration for VeOmni actor models.
+
+    The inheritance from BaseConfig provides omegaconf.DictConfig-like interface for a dataclass config.
+
+    Args:
+        strategy (str): Training strategy set to 'veomni' for VeOmni parallelism.
+        veomni (dict[str, Any]): Configuration for VeOmni settings.
+        use_remove_padding (bool): Whether to remove padding tokens in inputs during training
+    """
+
+    strategy: str = "veomni"
+    veomni: VeOmniEngineConfig = field(default_factory=VeOmniEngineConfig)
+    use_remove_padding: bool = False
+    use_rollout_log_probs: bool = False
+
+    def __post_init__(self):
+        """Validate VeOmni actor configuration parameters."""
+        super().__post_init__()
+        self.engine = self.veomni
+
+
+@dataclass
+class TorchTitanActorConfig(ActorConfig):
+    """Configuration for TorchTitan actor models.
+
+    The inheritance from BaseConfig provides omegaconf.DictConfig-like interface for a dataclass config.
+
+    Args:
+        strategy (str): Training strategy set to 'torchtitan' for TorchTitan parallelism.
+        torchtitan (TorchtitanEngineConfig): Configuration for TorchTitan engine settings.
+        use_remove_padding (bool): Whether to remove padding tokens in inputs during training
+        use_rollout_log_probs (bool): Whether to use log probabilities from rollout engine
+    """
+
+    strategy: str = "torchtitan"
+    torchtitan: TorchtitanEngineConfig = field(default_factory=TorchtitanEngineConfig)
+    use_remove_padding: bool = False
+    use_rollout_log_probs: bool = False
+
+    def __post_init__(self):
+        """Validate TorchTitan actor configuration parameters."""
+        super().__post_init__()
+        self.engine = self.torchtitan

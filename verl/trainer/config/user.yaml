@@ -35,6 +35,8 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: 1
     max_num_batched_tokens: ${max_model_len}
     max_model_len: ${max_model_len}
+    checkpoint_engine:
+      update_weights_bucket_megabytes: 3072
     val_kwargs:
       top_p: 0.95
       temperature: 0.6
@@ -46,13 +48,11 @@ algorithm:
 
 custom_reward_function:
   path: /home/${oc.env:USER}/SDPO/verl/utils/reward_score/feedback/__init__.py
+  name: compute_score
 
 critic:
   model:
     path: Qwen/Qwen3-8B
-
-reward_model:
-  use_reward_loop: False # disables experimental reward manager (which gives lower scores)
 
 trainer:
   project_name: SDPO-${oc.env:USER}
