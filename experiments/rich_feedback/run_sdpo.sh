@@ -14,10 +14,10 @@ fi
 
 # Base settings
 CONFIG_NAME="sdpo"
-BASE_JOB_NAME="sdpo"
+BASE_JOB_NAME="SDPO"
 
-ACCOUNT="agentic-models"
-QOS="h200_agentic-models_high"
+ACCOUNT="aira_ws2" # #"agentic-models"
+QOS="h200_coding_shared" #"h200_agentic-models_high" # "h200_aira_ws1_high" 
 
 DATA_PATHS=(
     "lcb_v6"
@@ -44,7 +44,8 @@ DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
 SEEDS=(42 123 456)
 
 MODEL_PATHS=(
-    "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-9B"
+    "Qwen/Qwen3-8B"
+
 )
 # =============================================================================
 # JOB SUBMISSION FUNCTION
@@ -57,7 +58,7 @@ submit_job() {
 
     # Define the environment setup and command execution
     # We use the user's home directory dynamically
-    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa"
+    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa; export BASE_JOB_NAME=$BASE_JOB_NAME"
 
     local run_cmd="bash /home/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
 
@@ -74,8 +75,8 @@ submit_job() {
         --gpus-per-node="$GPUS_PER_NODE"
         --mem="$MEM"
         --cpus-per-task="$CPUS_PER_TASK"
-        --output="/checkpoint/agentic-models/$USER/output/SDPO/%j.log"
-        --error="/checkpoint/agentic-models/$USER/output/SDPO/%j.err"
+        --output="/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/%j.log"
+        --error="/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/%j.err"
         --wrap="$wrapped_cmd"
     )
 
@@ -85,7 +86,10 @@ submit_job() {
         echo "${sbatch_cmd[@]}"
     else
         # Ensure output directory exists
-        mkdir -p "/checkpoint/agentic-models/$USER/output/SDPO"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/outputs"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/checkpoints"
+
         echo "Submitting job for: $exp_name"
         "${sbatch_cmd[@]}"
     fi

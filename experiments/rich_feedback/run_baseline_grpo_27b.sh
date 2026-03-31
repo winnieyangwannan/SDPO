@@ -14,7 +14,7 @@ fi
 
 # Base settings
 CONFIG_NAME="baseline_grpo"
-BASE_JOB_NAME="grpo"
+BASE_JOB_NAME="GRPO"
 
 ACCOUNT="aira_ws2" # #"agentic-models"
 QOS="h200_coding_shared" #"h200_agentic-models_high" # "h200_aira_ws1_high" 
@@ -70,8 +70,8 @@ submit_job() {
         --gpus-per-node="$GPUS_PER_NODE"
         --mem="$MEM"
         --cpus-per-task="$CPUS_PER_TASK"
-        --output="/checkpoint/agentic-models/$USER/output/SDPO/GRPO/%j.log"
-        --error="/checkpoint/agentic-models/$USER/output/SDPO/GRPO/%j.err"
+        --output="/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/%j.log"
+        --error="/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/%j.err"
         --wrap="$wrapped_cmd"
     )
 
@@ -81,7 +81,9 @@ submit_job() {
         echo "${sbatch_cmd[@]}"
     else
         # Ensure output directory exists
-        mkdir -p "/checkpoint/agentic-models/$USER/output/SDPO"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/outputs"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/checkpoints"
         echo "Submitting job for: $exp_name"
         "${sbatch_cmd[@]}"
     fi
