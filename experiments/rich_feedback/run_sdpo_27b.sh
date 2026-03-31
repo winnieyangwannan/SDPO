@@ -22,19 +22,19 @@ DATA_PATHS=(
     "lcb_v6"
 )
 
-# Slurm resources
-NODES=1
+# Slurm resources - scaled for 27B model
+NODES=2
 TIME="168:00:00"
 NTASKS_PER_NODE=1
 GPUS_PER_NODE=8
 MEM=460000
 CPUS_PER_TASK=96
 
-# Sweep Parameters
-TRAIN_BATCH_SIZES=(32)
-ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(8)
-LRS=(1e-6)
+# Sweep Parameters - reduced for 27B memory requirements
+TRAIN_BATCH_SIZES=(16)
+ROLLOUT_BATCH_SIZES=(4)
+MINI_BATCH_SIZES=(4)
+LRS=(5e-7)
 
 # SDPO-specific parameters
 # 0: forward KL, 0.5: Jensen-Shannon divergence, 1: reverse KL
@@ -42,7 +42,7 @@ ALPHAS=(1.0)
 DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
 
 MODEL_PATHS=(
-    "Qwen/Qwen3-8B"
+    "Qwen/Qwen3.5-27B"
 )
 
 # =============================================================================
@@ -63,14 +63,19 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
                                 # 2. Construct the arguments string to pass to the training script
                                 # Format: key=value key2=value2 ...
                                 ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
-trainer.group_name=SDPO-rich-feedback \
+trainer.group_name=SDPO-rich-feedback-27B \
+trainer.nnodes=2 \
+trainer.n_gpus_per_node=8 \
 actor_rollout_ref.actor.optim.lr_warmup_steps=0 \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.actor.optim.lr=$LR \
 actor_rollout_ref.actor.ppo_mini_batch_size=$MINI_BATCH_SIZE \
 actor_rollout_ref.model.path=$MODEL_PATH \
+actor_rollout_ref.model.enable_gradient_checkpointing=True \
+actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
+actor_rollout_ref.rollout.gpu_memory_utilization=0.45 \
 algorithm.rollout_correction.rollout_is=token \
-actor_rollout_ref.rollout.val_kwargs.n=16 \
+actor_rollout_ref.rollout.val_kwargs.n=4 \
 actor_rollout_ref.actor.self_distillation.distillation_topk=20 \
 actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=${DONTS_REPROMPT_ON_SELF_SUCCESS} \
 actor_rollout_ref.actor.self_distillation.alpha=$ALPHA \

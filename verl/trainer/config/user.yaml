@@ -2,11 +2,11 @@ defaults:
   - _self_
 
 vars:
-  dir: /checkpoint/agentic-models/winnieyangwn/SDPO/outputs
+  dir: /checkpoint/agentic-models/winnieyangwn/SDPO/${oc.env:BASE_JOB_NAME}/outputs
   data_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/datasets
   task: ${oc.env:TASK}
-  log_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/logs
-  ckpt_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/checkpoints
+  log_dir: /checkpoint/agentic-models/winnieyangwn/SDPO/${oc.env:BASE_JOB_NAME}/logs
+  ckpt_dir: /checkpoint/agentic-models/${oc.env:USER}/SDPO/${oc.env:BASE_JOB_NAME}/checkpoints
 
 data:
   train_files: ["${vars.data_dir}/${vars.task}/train.parquet"]
