@@ -16,13 +16,37 @@ Usage:
 
     python scripts/plot_training_metrics.py /checkpoint/agentic-models/winnieyangwn/output/SDPO/5386897.log --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/5386897_train_val.png
     python scripts/plot_training_metrics.py /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/5397053_train_val.png
+    
+    # qwen3-8b sdpo-verl-backup SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5418076.log \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc_backup.png
 
+
+    # qwen3-8b  verl-upgrade SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5423002.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5423003.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5423004.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
+
+
+    # qwen3.5-27b  verl-upgrade SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5390564.log \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5390565.log \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5390566.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_5_27b_train_val_acc.png
+
+    # qwen3.5-27b verl-upgrade GRPO 
     python scripts/plot_training_metrics.py \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397054.log \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397055.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
-    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/train_val_acc.png
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_5_27b_train_val_acc.png
 
 """
 
@@ -110,6 +134,58 @@ def get_experiment_name(log_path: str) -> str:
     return Path(log_path).stem
 
 
+def find_best_metric(available_metrics: set, patterns: List[str]) -> Optional[str]:
+    """Find the best available metric matching one of the patterns.
+    
+    Patterns can include {k} placeholder which will match any number,
+    preferring higher k values.
+    """
+    for pattern in patterns:
+        if '{k}' in pattern:
+            # Find all matching metrics with different k values
+            import re
+            regex_pattern = pattern.replace('{k}', r'(\d+)')
+            matches = []
+            for m in available_metrics:
+                match = re.fullmatch(regex_pattern, m)
+                if match:
+                    k_value = int(match.group(1))
+                    matches.append((k_value, m))
+            if matches:
+                # Return the one with highest k value
+                return max(matches, key=lambda x: x[0])[1]
+        elif pattern in available_metrics:
+            return pattern
+    return None
+
+
+def get_default_metrics(available_metrics: set) -> List[str]:
+    """Dynamically select default metrics based on what's available in the log."""
+    metrics = []
+    
+    # Always include these if available
+    for m in ['critic/score/mean', 'actor/pg_loss']:
+        if m in available_metrics:
+            metrics.append(m)
+    
+    # Flexible pass@k metrics - try val-core first, then val-aux
+    # For each metric type, find the best available k value
+    metric_patterns = [
+        # (display_priority, patterns_to_try)
+        ['val-core/livecodebench/acc/best@{k}/mean', 'val-aux/livecodebench/acc/best@{k}/mean'],
+        ['val-core/livecodebench/acc/maj@{k}/mean', 'val-aux/livecodebench/acc/maj@{k}/mean'],
+        ['val-core/livecodebench/acc/worst@{k}/mean', 'val-aux/livecodebench/acc/worst@{k}/mean'],
+        ['val-core/livecodebench/score/mean@{k}', 'val-aux/livecodebench/score/mean@{k}'],
+    ]
+    
+    for patterns in metric_patterns:
+        best = find_best_metric(available_metrics, patterns)
+        if best:
+            metrics.append(best)
+    
+    return metrics
+
+
 def plot_metrics(
     log_files: List[str],
     labels: Optional[List[str]] = None,
@@ -118,29 +194,25 @@ def plot_metrics(
 ):
     """Plot training metrics from one or more log files."""
     
-    if metrics_to_plot is None:
-        metrics_to_plot = [
-            'critic/score/mean',
-            'actor/pg_loss',
-            'val-aux/livecodebench/score/mean@16',
-            'val-aux/livecodebench/acc/best@16/mean',  # pass@16
-            'val-aux/livecodebench/acc/maj@8/mean',
-            'val-aux/livecodebench/acc/worst@16/mean',
-        ]
-    
-    # Extract metrics from all log files
+    # Extract metrics from all log files first to know what's available
     all_data = []
     for i, log_path in enumerate(log_files):
         data = extract_metrics_from_log(log_path)
         label = labels[i] if labels and i < len(labels) else get_experiment_name(log_path)
         all_data.append((label, data))
     
-    # Filter to metrics that exist
+    # Collect all available metrics
     available_metrics = set()
     for _, data in all_data:
         available_metrics.update(data.keys())
     
-    metrics_to_plot = [m for m in metrics_to_plot if m in available_metrics]
+    # If no metrics specified, dynamically select based on what's available
+    if metrics_to_plot is None:
+        metrics_to_plot = get_default_metrics(available_metrics)
+        print(f"Auto-selected metrics: {metrics_to_plot}")
+    else:
+        # Filter to metrics that exist
+        metrics_to_plot = [m for m in metrics_to_plot if m in available_metrics]
     
     if not metrics_to_plot:
         print("No matching metrics found. Available metrics:")
