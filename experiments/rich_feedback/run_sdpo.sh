@@ -15,8 +15,8 @@ parse_dry_run "$1"
 CONFIG_NAME="sdpo"
 BASE_JOB_NAME="SDPO"
 
-ACCOUNT="aira_ws2" # "agentic-models"
-QOS="h200_coding_shared" # "h200_agentic-models_high"
+ACCOUNT="agentic-models" # "aira_ws2" # 
+QOS= "h200_agentic-models_high" # "h200_coding_shared" # 
 
 DATA_PATHS=(
     "lcb_v6"

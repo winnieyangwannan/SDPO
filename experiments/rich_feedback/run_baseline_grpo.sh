@@ -15,8 +15,8 @@ parse_dry_run "$1"
 CONFIG_NAME="baseline_grpo"
 BASE_JOB_NAME="GRPO"
 
-ACCOUNT="aira_ws2" # "agentic-models"
-QOS="h200_coding_shared" # "h200_agentic-models_high"
+ACCOUNT="agentic-models" # "aira_ws2" # "agentic-models"
+QOS="h200_agentic-models_high" # "h200_coding_shared" # "h200_agentic-models_high"
 
 
 DATA_PATHS=(
