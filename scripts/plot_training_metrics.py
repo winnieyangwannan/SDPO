@@ -62,7 +62,7 @@ Usage:
     python scripts/plot_training_metrics.py \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397054.log \
-    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5460979.log \
+    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397055.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_5_27b_train_val_acc.png
 
