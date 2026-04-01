@@ -16,7 +16,7 @@ CONFIG_NAME="sdpo"
 BASE_JOB_NAME="SDPO"
 
 ACCOUNT="agentic-models" # "aira_ws2" # 
-QOS= "h200_agentic-models_high" # "h200_coding_shared" # 
+QOS="h200_agentic-models_high" # "h200_coding_shared" # 
 
 DATA_PATHS=(
     "lcb_v6"
@@ -44,6 +44,9 @@ DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
 MODEL_PATHS=(
     "Qwen/Qwen3-8B"
 )
+
+# Checkpoint saving frequency (-1 to disable, positive number for every N steps)
+SAVE_FREQ=10
 
 # Random seeds for reproducibility
 SEEDS=(42 123 456)
@@ -78,7 +81,8 @@ actor_rollout_ref.actor.self_distillation.distillation_topk=20 \
 actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=${DONTS_REPROMPT_ON_SELF_SUCCESS} \
 actor_rollout_ref.actor.self_distillation.alpha=$ALPHA \
 actor_rollout_ref.actor.self_distillation.teacher_update_rate=0.01 \
-actor_rollout_ref.actor.data_loader_seed=$SEED"
+actor_rollout_ref.actor.data_loader_seed=$SEED \
+trainer.save_freq=$SAVE_FREQ"
 
                                     # 3. Submit
                                     submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"

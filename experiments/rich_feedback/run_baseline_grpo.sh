@@ -37,6 +37,10 @@ ROLLOUT_BATCH_SIZES=(8)
 MINI_BATCH_SIZES=(8)
 
 LRS=(1e-6)
+
+# Checkpoint saving frequency (-1 to disable, positive number for every N steps)
+SAVE_FREQ=10
+
 SEEDS=(42 123 456)
 MODEL_PATHS=(
     "Qwen/Qwen3-8B"
@@ -68,7 +72,8 @@ actor_rollout_ref.actor.ppo_mini_batch_size=$MINI_BATCH_SIZE \
 actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.data_loader_seed=$SEED \
 algorithm.rollout_correction.rollout_is=token \
-actor_rollout_ref.rollout.val_kwargs.n=16"
+actor_rollout_ref.rollout.val_kwargs.n=16 \
+trainer.save_freq=$SAVE_FREQ"
 
                             # 3. Submit
                             submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"

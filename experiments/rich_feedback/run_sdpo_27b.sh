@@ -40,6 +40,10 @@ LRS=(5e-7)
 # 0: forward KL, 0.5: Jensen-Shannon divergence, 1: reverse KL
 ALPHAS=(1.0)
 DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
+
+# Checkpoint saving frequency (-1 to disable, positive number for every N steps)
+SAVE_FREQ=10
+
 SEEDS=(42 123 456)
 
 MODEL_PATHS=(
@@ -83,7 +87,8 @@ actor_rollout_ref.rollout.val_kwargs.n=4 \
 actor_rollout_ref.actor.self_distillation.distillation_topk=20 \
 actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=${DONTS_REPROMPT_ON_SELF_SUCCESS} \
 actor_rollout_ref.actor.self_distillation.alpha=$ALPHA \
-actor_rollout_ref.actor.self_distillation.teacher_update_rate=0.01"
+actor_rollout_ref.actor.self_distillation.teacher_update_rate=0.01 \
+trainer.save_freq=$SAVE_FREQ"
 
                                     # 3. Submit
                                     submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"
