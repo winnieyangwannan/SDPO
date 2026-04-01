@@ -34,7 +34,7 @@ CPUS_PER_TASK=96
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
 ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(1)
+MINI_BATCH_SIZES=(8)
 LRS=(1e-6)
 
 # SDPO-specific parameters
@@ -42,9 +42,11 @@ LRS=(1e-6)
 ALPHAS=(1.0)
 DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
 SEEDS=(42 123 456)
+SAVE_FREQ=10
 
 MODEL_PATHS=(
-    "Qwen/Qwen3-8B"
+    # "Qwen/Qwen3-8B"
+    "Qwen/Qwen3.5-9B"
 
 )
 # =============================================================================
@@ -126,6 +128,7 @@ algorithm.rollout_correction.rollout_is=token \
 actor_rollout_ref.rollout.val_kwargs.n=16 \
 actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=4096 \
 trainer.total_training_steps=300 \
+trainer.save_freq=$SAVE_FREQ \
 actor_rollout_ref.actor.self_distillation.distillation_topk=20 \
 actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=${DONTS_REPROMPT_ON_SELF_SUCCESS} \
 actor_rollout_ref.actor.self_distillation.alpha=$ALPHA \

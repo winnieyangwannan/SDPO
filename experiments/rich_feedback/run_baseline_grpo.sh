@@ -16,8 +16,8 @@ fi
 CONFIG_NAME="baseline_grpo"
 BASE_JOB_NAME="GRPO"
 
-ACCOUNT="agentic-models"
-QOS="h200_agentic-models_high"
+ACCOUNT="agentic-models" # "aira_ws2" # #
+QOS="h200_agentic-models_high" # "h200_coding_shared" # # "h200_aira_ws1_high" 
 
 DATA_PATHS=(
     "lcb_v6"
@@ -38,6 +38,7 @@ MINI_BATCH_SIZES=(8)
 
 LRS=(1e-6)
 SEEDS=(42 123 456)
+SAVE_FREQ=50
 MODEL_PATHS=(
     "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-9B"
 )
@@ -115,7 +116,8 @@ actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.data_loader_seed=$SEED \
 algorithm.rollout_correction.rollout_is=token \
 actor_rollout_ref.rollout.val_kwargs.n=16 \
-trainer.total_training_steps=300"
+trainer.total_training_steps=300 \
+trainer.save_freq=$SAVE_FREQ"
 
                             # 3. Submit
                             submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"

@@ -42,6 +42,7 @@ LRS=(1e-6)
 ALPHAS=(1.0)
 DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
 SEEDS=(42 123 456)
+SAVE_FREQ=10
 
 MODEL_PATHS=(
     "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-27B"
@@ -124,6 +125,7 @@ actor_rollout_ref.rollout.val_kwargs.n=16 \
 actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=8192 \
 trainer.total_training_steps=300 \
 trainer.nnodes=2 \
+trainer.save_freq=$SAVE_FREQ \
 actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
 actor_rollout_ref.model.enable_gradient_checkpointing=True \
 actor_rollout_ref.actor.self_distillation.distillation_topk=20 \

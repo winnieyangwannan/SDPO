@@ -16,8 +16,8 @@ fi
 CONFIG_NAME="baseline_grpo"
 BASE_JOB_NAME="GRPO"
 
-ACCOUNT="aira_ws2" # #"agentic-models"
-QOS="h200_coding_shared" #"h200_agentic-models_high" # "h200_aira_ws1_high" 
+ACCOUNT="agentic-models" # "aira_ws2" # #"agentic-models"
+QOS="h200_agentic-models_high" # "h200_coding_shared" #"h200_agentic-models_high" # "h200_aira_ws1_high" 
 
 DATA_PATHS=(
     "lcb_v6"
@@ -38,6 +38,8 @@ MINI_BATCH_SIZES=(16)
 
 LRS=(1e-6)
 SEEDS=(42 123 456)
+
+SAVE_FREQ=50
 MODEL_PATHS=(
     "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-27B"
 )
@@ -53,7 +55,7 @@ submit_job() {
 
     # Define the environment setup and command execution
     # We use the user's home directory dynamically
-    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa"
+    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa; export BASE_JOB_NAME=$BASE_JOB_NAME"
 
     local run_cmd="bash /home/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
 
@@ -119,6 +121,7 @@ actor_rollout_ref.rollout.val_kwargs.n=16 \
 actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=8192 \
 trainer.total_training_steps=300 \
 trainer.nnodes=2 \
+trainer.save_freq=$SAVE_FREQ \
 actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
 actor_rollout_ref.model.enable_gradient_checkpointing=True"
 
