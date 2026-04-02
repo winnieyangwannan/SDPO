@@ -795,13 +795,25 @@ class RayPPOTrainer:
             if "__num_turns__" in test_batch.non_tensor_batch:
                 sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
 
+            # collect raw_prompt (full chat history) for dumping
+            if "raw_prompt" in test_batch.non_tensor_batch:
+                raw_prompts = test_batch.non_tensor_batch["raw_prompt"]
+                # Convert to list format for JSON serialization
+                raw_prompts_list = [list(rp) if hasattr(rp, '__iter__') and not isinstance(rp, str) else rp for rp in raw_prompts]
+                if "raw_prompt" not in reward_extra_infos_dict:
+                    reward_extra_infos_dict["raw_prompt"] = []
+                reward_extra_infos_dict["raw_prompt"].extend(raw_prompts_list)
+
             data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
-        # dump generations
+        # dump generations (check validation_save_freq to control how often we save)
         val_data_dir = self.config.trainer.get("validation_data_dir", None)
-        if val_data_dir:
+        val_save_freq = self.config.trainer.get("validation_save_freq", None)
+        # If validation_save_freq is not set, save every time we validate
+        should_save = val_save_freq is None or (self.global_steps % val_save_freq == 0)
+        if val_data_dir and should_save:
             self._dump_generations(
                 inputs=sample_inputs,
                 outputs=sample_outputs,

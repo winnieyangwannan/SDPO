@@ -16,8 +16,8 @@ fi
 CONFIG_NAME="sdpo"
 BASE_JOB_NAME="SDPO"
 
-ACCOUNT="aira_ws2" # #"agentic-models"
-QOS="h200_coding_shared" #"h200_agentic-models_high" # "h200_aira_ws1_high" 
+ACCOUNT="agentic-models" # "aira_ws2" # "agentic-models" # #
+QOS="h200_agentic-models_high" # "h200_coding_shared" # "h200_agentic-models_high" #  #  # 
 
 DATA_PATHS=(
     "lcb_v6"
@@ -34,15 +34,18 @@ CPUS_PER_TASK=96
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
 ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(8)
+MINI_BATCH_SIZES=(16)
 LRS=(1e-6)
 
 # SDPO-specific parameters
 # 0: forward KL, 0.5: Jensen-Shannon divergence, 1: reverse KL
 ALPHAS=(1.0)
-DONTS_REPROMPT_ON_SELF_SUCCESSS=(True)
+DONTS_REPROMPT_ON_SELF_SUCCESS=(True)
 SEEDS=(42 123 456)
-SAVE_FREQ=10
+SAVE_FREQ=50
+
+# Directory to save raw validation generations (JSONL format)
+VAL_DATA_DIR="/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/eval"
 
 MODEL_PATHS=(
     # "Qwen/Qwen3-8B"
@@ -93,7 +96,11 @@ submit_job() {
         mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/checkpoints"
 
         echo "Submitting job for: $exp_name"
-        "${sbatch_cmd[@]}"
+        job_output=$("${sbatch_cmd[@]}")
+        echo "$job_output"
+        job_id=$(echo "$job_output" | awk '{print $NF}')
+        echo "  Log: /checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/${job_id}.log"
+        echo "  Err: /checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/${job_id}.err"
     fi
 }
 
@@ -107,7 +114,7 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
             for MODEL_PATH in "${MODEL_PATHS[@]}"; do
                 for MINI_BATCH_SIZE in "${MINI_BATCH_SIZES[@]}"; do
                     for ALPHA in "${ALPHAS[@]}"; do
-                        for DONTS_REPROMPT_ON_SELF_SUCCESS in "${DONTS_REPROMPT_ON_SELF_SUCCESSS[@]}"; do
+                        for DONTS_REPROMPT_ON_SELF_SUCCESS in "${DONTS_REPROMPT_ON_SELF_SUCCESS[@]}"; do
                             for SEED in "${SEEDS[@]}"; do
                                 for DATA_PATH in "${DATA_PATHS[@]}"; do
                                     # 1. Construct the experiment name (must be unique)
@@ -117,7 +124,11 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
                                     # 2. Construct the arguments string to pass to the training script
                                     # Format: key=value key2=value2 ...
                                     ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
+trainer.n_gpus_per_node=$GPUS_PER_NODE \
 trainer.group_name=SDPO-rich-feedback \
+trainer.test_freq=5 \
+trainer.validation_save_freq=50 \
+trainer.validation_data_dir=$VAL_DATA_DIR/$EXP_NAME \
 actor_rollout_ref.actor.optim.lr_warmup_steps=0 \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.actor.optim.lr=$LR \

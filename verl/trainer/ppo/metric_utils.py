@@ -593,8 +593,9 @@ def process_validation_metrics(
             var_dict = uid_dict.setdefault(uid, {})
 
             for var_name, var_vals in var2vals.items():
-                # skip empty or string values
-                if not var_vals or isinstance(var_vals[0], str):
+                # skip empty, string, dict, or list values (can't compute metrics on these)
+                # Check all elements to handle heterogeneous data
+                if not var_vals or any(isinstance(v, (str, dict, list)) for v in var_vals):
                     continue
 
                 # compute mean and std

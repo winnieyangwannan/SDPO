@@ -38,9 +38,14 @@ MINI_BATCH_SIZES=(16)
 
 LRS=(1e-6)
 # SEEDS=(42 123 456)
-SEEDS=(1 2 3)
+# SEEDS=(1 2 3)
+SEEDS=(2 3)
 
 SAVE_FREQ=50
+
+# Directory to save raw validation generations (JSONL format)
+VAL_DATA_DIR="/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/eval"
+
 MODEL_PATHS=(
     "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-27B"
 )
@@ -54,16 +59,80 @@ submit_job() {
     local script_args="$2"
     local data_path="$3"
 
-    # Define the environment setup and command execution
-    # We use the user's home directory dynamically
-    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa; export BASE_JOB_NAME=$BASE_JOB_NAME"
+    # For multi-node jobs, we need to set up a Ray cluster properly
+    # Create a temporary script that handles Ray cluster initialization
+    local job_script="/tmp/verl_multinode_${exp_name}.sh"
+    
+    cat > "$job_script" << 'SCRIPT_EOF'
+#!/bin/bash
+set -e
 
-    local run_cmd="bash /home/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
+# Environment setup
+eval "$(conda shell.bash hook)"
+conda activate verl2
+export PYTHONPATH=/home/$USER/SDPO:$PYTHONPATH
+export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export RAY_DISABLE_METRICS=1
+export VLLM_ATTENTION_BACKEND=XFORMERS
+export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa
 
-    local wrapped_cmd="srun bash -c '$setup_cmds; $run_cmd'"
+# Get node information
+nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+nodes_array=($nodes)
+head_node=${nodes_array[0]}
+head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address | awk '{print $1}')
+
+port=6379
+ip_head=$head_node_ip:$port
+export ip_head
+export RAY_ADDRESS=$ip_head
+
+echo "Head node: $head_node"
+echo "Head node IP: $head_node_ip"
+echo "IP Head: $ip_head"
+echo "SLURM_JOB_NUM_NODES: $SLURM_JOB_NUM_NODES"
+echo "SLURM_GPUS_PER_NODE: $SLURM_GPUS_PER_NODE"
+echo "SLURM_CPUS_PER_TASK: $SLURM_CPUS_PER_TASK"
+
+# Start Ray head on the first node
+echo "Starting Ray HEAD at $head_node"
+srun --nodes=1 --ntasks=1 -w "$head_node" \
+    bash -c "eval \"\$(conda shell.bash hook)\"; conda activate verl2; ray start --head --node-ip-address=\"$head_node_ip\" --port=$port --num-cpus ${SLURM_CPUS_PER_TASK} --num-gpus ${SLURM_GPUS_PER_NODE} --block" &
+sleep 20
+
+# Start Ray workers on other nodes
+worker_num=$((SLURM_JOB_NUM_NODES - 1))
+for ((i = 1; i <= worker_num; i++)); do
+    node_i=${nodes_array[$i]}
+    echo "Starting Ray WORKER $i at $node_i"
+    srun --nodes=1 --ntasks=1 -w "$node_i" \
+        bash -c "eval \"\$(conda shell.bash hook)\"; conda activate verl2; ray start --address $ip_head --num-cpus ${SLURM_CPUS_PER_TASK} --num-gpus ${SLURM_GPUS_PER_NODE} --block" &
+    sleep 10
+done
+
+# Wait for cluster to be ready
+sleep 15
+echo "Ray cluster started. Checking status..."
+srun --overlap --nodes=1 --ntasks=1 -w "$head_node" bash -c "eval \"\$(conda shell.bash hook)\"; conda activate verl2; ray status"
+
+# Run training on head node
+echo "Starting training..."
+SCRIPT_EOF
+
+    # Append the actual training command with variables expanded
+    cat >> "$job_script" << SCRIPT_EOF
+export BASE_JOB_NAME=$BASE_JOB_NAME
+export RAY_ADDRESS=\$ip_head
+export EXPERIMENT=$exp_name
+srun --export=ALL --overlap --nodes=1 --ntasks=1 -w "\$head_node" \
+    bash -c "eval \"\\\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/\$USER/SDPO:\\\$PYTHONPATH; export RAY_ADDRESS=\$ip_head; export EXPERIMENT=$exp_name; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa; export BASE_JOB_NAME=$BASE_JOB_NAME; bash /home/\$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
+SCRIPT_EOF
+
+    chmod +x "$job_script"
 
     local sbatch_cmd=(
-        sbatch
+        sbatch 
         --job-name="$BASE_JOB_NAME"
         --account="$ACCOUNT"
         --nodes="$NODES"
@@ -75,7 +144,7 @@ submit_job() {
         --cpus-per-task="$CPUS_PER_TASK"
         --output="/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/%j.log"
         --error="/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/%j.err"
-        --wrap="$wrapped_cmd"
+        "$job_script"
     )
 
     if [ "$DRY_RUN" = true ]; then
@@ -87,8 +156,13 @@ submit_job() {
         mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs"
         mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/outputs"
         mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/checkpoints"
+
         echo "Submitting job for: $exp_name"
-        "${sbatch_cmd[@]}"
+        job_output=$("${sbatch_cmd[@]}")
+        echo "$job_output"
+        job_id=$(echo "$job_output" | awk '{print $NF}')
+        echo "  Log: /checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/${job_id}.log"
+        echo "  Err: /checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/${job_id}.err"
     fi
 }
 
@@ -109,8 +183,19 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
 
                             # 2. Construct the arguments string to pass to the training script
                             # Format: key=value key2=value2 ...
-                            ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
+                            # Override vars that use env var interpolation to ensure they work in Ray
+                            ARGS="vars.task=$DATA_PATH \
+vars.dir=/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/outputs \
+vars.log_dir=/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/logs \
+vars.ckpt_dir=/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/checkpoints \
+custom_reward_function.path=/home/winnieyangwn/SDPO/verl/utils/reward_score/feedback/__init__.py \
+data.train_batch_size=$TRAIN_BATCH_SIZE \
+trainer.n_gpus_per_node=$GPUS_PER_NODE \
 trainer.group_name=GRPO-rich-feedback \
+trainer.experiment_name=$EXP_NAME \
+trainer.test_freq=5 \
+trainer.validation_save_freq=50 \
+trainer.validation_data_dir=$VAL_DATA_DIR/$EXP_NAME \
 actor_rollout_ref.actor.optim.lr_warmup_steps=0 \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.actor.optim.lr=$LR \

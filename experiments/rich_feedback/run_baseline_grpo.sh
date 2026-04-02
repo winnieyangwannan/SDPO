@@ -34,11 +34,15 @@ CPUS_PER_TASK=96
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
 ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(8)
+MINI_BATCH_SIZES=(16)
 
 LRS=(1e-6)
 SEEDS=(42 123 456)
 SAVE_FREQ=50
+
+# Directory to save raw validation generations (JSONL format)
+VAL_DATA_DIR="/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/eval"
+
 MODEL_PATHS=(
     "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-9B"
 )
@@ -54,7 +58,7 @@ submit_job() {
 
     # Define the environment setup and command execution
     # We use the user's home directory dynamically
-    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa"
+    local setup_cmds="eval \"\$(conda shell.bash hook)\"; conda activate verl2; export BASE_JOB_NAME=$BASE_JOB_NAME; export PYTHONPATH=/home/$USER/SDPO:\$PYTHONPATH; export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1; export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7; export RAY_DISABLE_METRICS=1; export VLLM_ATTENTION_BACKEND=XFORMERS; export TRANSFORMERS_ATTN_IMPLEMENTATION=sdpa"
 
     local run_cmd="bash /home/$USER/SDPO/training/verl_training.sh $exp_name $CONFIG_NAME $data_path $script_args"
 
@@ -84,8 +88,13 @@ submit_job() {
         # Ensure output directory exists
         mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs"
         mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/outputs"
-        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/checkpoints"        echo "Submitting job for: $exp_name"
-        "${sbatch_cmd[@]}"
+        mkdir -p "/checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/checkpoints"
+        echo "Submitting job for: $exp_name"
+        job_output=$("${sbatch_cmd[@]}")
+        echo "$job_output"
+        job_id=$(echo "$job_output" | awk '{print $NF}')
+        echo "  Log: /checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/${job_id}.log"
+        echo "  Err: /checkpoint/agentic-models/$USER/SDPO/$BASE_JOB_NAME/logs/${job_id}.err"
     fi
 }
 
@@ -107,13 +116,18 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
                             # 2. Construct the arguments string to pass to the training script
                             # Format: key=value key2=value2 ...
                             ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
+trainer.n_gpus_per_node=$GPUS_PER_NODE \
 trainer.group_name=GRPO-rich-feedback \
+trainer.test_freq=5 \
+trainer.validation_save_freq=50 \
+trainer.validation_data_dir=$VAL_DATA_DIR/$EXP_NAME \
 actor_rollout_ref.actor.optim.lr_warmup_steps=0 \
 actor_rollout_ref.rollout.n=$ROLLOUT_BATCH_SIZE \
 actor_rollout_ref.actor.optim.lr=$LR \
 actor_rollout_ref.actor.ppo_mini_batch_size=$MINI_BATCH_SIZE \
 actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.data_loader_seed=$SEED \
+actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=4096 \
 algorithm.rollout_correction.rollout_is=token \
 actor_rollout_ref.rollout.val_kwargs.n=16 \
 trainer.total_training_steps=300 \

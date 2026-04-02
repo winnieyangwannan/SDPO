@@ -930,7 +930,8 @@ class AgentLoopWorker:
             "max_global_steps",
             "extras",
         }
-        all_keys = set(key for input_item in inputs for key in input_item.extra_fields) | default_extra_keys
+        # Exclude reward_extra_info since it's already been flattened into separate keys above
+        all_keys = (set(key for input_item in inputs for key in input_item.extra_fields) | default_extra_keys) - {"reward_extra_info"}
         for key in all_keys:
             temp_arr = np.empty(len(inputs), dtype=object)
             temp_arr[:] = [input.extra_fields.get(key) for input in inputs]

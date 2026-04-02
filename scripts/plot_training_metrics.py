@@ -16,29 +16,29 @@ Usage:
 
     python scripts/plot_training_metrics.py /checkpoint/agentic-models/winnieyangwn/output/SDPO/5386897.log --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/5386897_train_val.png
     python scripts/plot_training_metrics.py /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/5397053_train_val.png
-    
-    # qwen3-8b sdpo-verl-backup SDPO
-    python scripts/plot_training_metrics.py \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5418076.log \
-    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc_backup.png
 
+
+    ------------------------------------------------------------------------------------------
     
     # qwen3-8b  sdpo-verl-backup SDPO
     python scripts/plot_training_metrics.py \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5430588.log \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5430589.log \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5430590.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5471078.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5471079.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5471080.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc_backup.png
 
+    
     # qwen3-8b  sdpo-verl-backup GRPO
     python scripts/plot_training_metrics.py \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5431677.log \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5431678.log \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5431679.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471148.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471149.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471150.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_8b_train_val_acc_backup.png
 
+
+    ------------------------------------------------------------------------------------------
 
     # qwen3-8b  verl-upgrade SDPO
     python scripts/plot_training_metrics.py \
@@ -48,14 +48,32 @@ Usage:
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
 
+    # qwen3-8b  verl-upgrade SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5502663.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5502664.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5502665.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
+
 
     # qwen3.5-27b  verl-upgrade SDPO
     python scripts/plot_training_metrics.py \
-    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5390564.log \
-    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5390565.log \
-    /checkpoint/agentic-models/winnieyangwn/output/SDPO/5390566.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5478132.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5478133.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5478134.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_5_27b_train_val_acc.png
+
+
+    # qwen3.5-9b verl-upgrade GRPO 
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5474196.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5474197.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5474198.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_5_9b_train_val_acc.png
+
 
     
     # qwen3.5-27b verl-upgrade GRPO 
@@ -63,15 +81,10 @@ Usage:
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397053.log \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397054.log \
     /checkpoint/agentic-models/winnieyangwn/output/SDPO/5397055.log \
-    --labels "Seed 1" "Seed 2" "Seed 3" \
-    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_5_27b_train_val_acc.png
-
-    # qwen3.5-27b verl-upgrade GRPO 
-    python scripts/plot_training_metrics.py \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5469448.log \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5469449.log \
-    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5469450.log \
-    --labels "Seed 1" "Seed 2" "Seed 3" \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5470534.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5470535.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471076.log \
+    --labels "Seed 1" "Seed 2"  "Seed 3"  "Seed 4" "Seed 5"  "Seed 6" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_5_27b_train_val_acc.png
 
 """

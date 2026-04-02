@@ -36,7 +36,7 @@ actor_rollout_ref:
     max_num_batched_tokens: ${max_model_len}
     max_model_len: ${max_model_len}
     checkpoint_engine:
-      update_weights_bucket_megabytes: 3072
+      update_weights_bucket_megabytes: 6144
     val_kwargs:
       top_p: 0.95
       temperature: 0.6
