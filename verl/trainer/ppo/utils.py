@@ -75,7 +75,11 @@ class Role(Enum):
 def need_reference_policy(
     config: DictConfig,
 ) -> bool:
-    """Given the config, do we need ref policy."""
+    """Given the config, do we need ref policy for KL regularization.
+    
+    Note: SDPO handles its own reference model separately via Role.ActorRolloutRef,
+    so it is NOT included here. See add_actor_rollout_worker() in main_ppo.py.
+    """
     return config.algorithm.use_kl_in_reward or config.actor_rollout_ref.actor.use_kl_loss
 
 

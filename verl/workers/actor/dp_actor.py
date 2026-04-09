@@ -147,11 +147,17 @@ class DataParallelPPOActor(BasePPOActor):
         if teacher_regularization != "ema":
             return
         update_rate = getattr(self_distillation_cfg, "teacher_update_rate", 0.0)
-        if self.teacher_module is None or update_rate == 0.0:
+        if update_rate == 0.0:
             return
+        if self.teacher_module is None or self.teacher_module is self.actor_module:
+            raise ValueError("EMA teacher requires a separate teacher_module in the actor worker.")
         with torch.no_grad():
-            for teacher_param, actor_param in zip(self.teacher_module.parameters(), self.actor_module.parameters()):
-                teacher_param.data.mul_(1 - update_rate).add_(actor_param.data, alpha=update_rate)
+            for teacher_param, student_param in zip(
+                self.teacher_module.parameters(),
+                self.actor_module.parameters(),
+            ):
+                student_data = student_param.data.to(device=teacher_param.device)
+                teacher_param.data.mul_(1.0 - update_rate).add_(student_data, alpha=update_rate)
 
     @staticmethod
     def _has_non_empty_multi_modal_inputs(multi_modal_inputs) -> bool:

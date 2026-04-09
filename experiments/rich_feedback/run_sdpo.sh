@@ -34,22 +34,32 @@ CPUS_PER_TASK=96
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
 ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(16)
+MINI_BATCH_SIZES=(32)
 LRS=(1e-6)
+
+# Evaluation parameters
+# NUM_WORKERS: Number of parallel Ray actors for reward computation.
+# Each worker processes samples sequentially, but workers run in parallel.
+# With 40 test cases per sample spawning subprocesses, total processes = NUM_WORKERS × 40.
+# Recommended: 16-24 for 96 CPUs to avoid thrashing (96 CPUs / 40 tests ≈ 2-3 optimal, but can over-subscribe)
+NUM_WORKERS=16
 
 # SDPO-specific parameters
 # 0: forward KL, 0.5: Jensen-Shannon divergence, 1: reverse KL
 ALPHAS=(1.0)
 DONTS_REPROMPT_ON_SELF_SUCCESS=(True)
-SEEDS=(42 123 456)
+# SEEDS=(42 123 456)
+# SEEDS=(1 2 3)
+SEEDS=(6 7 8)
+
 SAVE_FREQ=50
 
 # Directory to save raw validation generations (JSONL format)
 VAL_DATA_DIR="/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/eval"
 
 MODEL_PATHS=(
-    # "Qwen/Qwen3-8B"
-    "Qwen/Qwen3.5-9B"
+    # "/checkpoint/agentic-models/winnieyangwn/models/Qwen3-8B"
+    "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-9B"
 
 )
 # =============================================================================
@@ -137,13 +147,18 @@ actor_rollout_ref.model.path=$MODEL_PATH \
 actor_rollout_ref.actor.data_loader_seed=$SEED \
 algorithm.rollout_correction.rollout_is=token \
 actor_rollout_ref.rollout.val_kwargs.n=16 \
+actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
+actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
+actor_rollout_ref.rollout.val_kwargs.do_sample=True \
 actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=4096 \
 trainer.total_training_steps=300 \
 trainer.save_freq=$SAVE_FREQ \
 actor_rollout_ref.actor.self_distillation.distillation_topk=20 \
 actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=${DONTS_REPROMPT_ON_SELF_SUCCESS} \
 actor_rollout_ref.actor.self_distillation.alpha=$ALPHA \
-actor_rollout_ref.actor.self_distillation.teacher_update_rate=0.01"
+actor_rollout_ref.actor.self_distillation.teacher_update_rate=0.01 \
+actor_rollout_ref.actor.self_distillation.include_environment_feedback=True \
+reward.num_workers=$NUM_WORKERS"
 
                                     # 3. Submit
                                     submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"

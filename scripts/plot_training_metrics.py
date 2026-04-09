@@ -27,6 +27,14 @@ Usage:
     /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5471080.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc_backup.png
+    
+    # qwen3-8b  sdpo-verl-backup SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO1/logs/5548447.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO1/logs/5548448.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO1/logs/5548449.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc_backup.png
 
     
     # qwen3-8b  sdpo-verl-backup GRPO
@@ -34,13 +42,17 @@ Usage:
     /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471148.log \
     /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471149.log \
     /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5471150.log \
-    --labels "Seed 1" "Seed 2" "Seed 3" \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5548420.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5548421.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5548422.log \
+    --labels "Seed 1" "Seed 2" "Seed 3"  "Seed 1" "Seed 2" "Seed 3"  \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_8b_train_val_acc_backup.png
+    
 
 
     ------------------------------------------------------------------------------------------
 
-    # qwen3-8b  verl-upgrade SDPO
+    # qwen3-8b  verl-upgrade SDPO (v0)
     python scripts/plot_training_metrics.py \
     /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5423002.log \
     /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5423003.log \
@@ -48,13 +60,39 @@ Usage:
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
 
-    # qwen3-8b  verl-upgrade SDPO
+    # qwen3-8b  verl-upgrade SDPO (v1)
     python scripts/plot_training_metrics.py \
     /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5502663.log \
     /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5502664.log \
     /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5502665.log \
     --labels "Seed 1" "Seed 2" "Seed 3" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
+    
+    # qwen3-8b  verl-upgrade SDPO (v2)
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5543884.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5543885.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5543886.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
+    
+    # qwen3-8b  verl-upgrade SDPO (v3)
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5551117.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5551118.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5551119.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_8b_train_val_acc.png
+    
+    
+    # qwen3.5-9b  verl-upgrade SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5514958.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5514959.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5514960.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_5_9b_train_val_acc.png
+
 
 
     # qwen3.5-27b  verl-upgrade SDPO
@@ -66,6 +104,16 @@ Usage:
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_5_27b_train_val_acc.png
 
 
+
+    # qwen3.5-27b  verl-upgrade SDPO
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5518008.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5518009.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SDPO/logs/5518010.log \
+    --labels "Seed 1" "Seed 2" "Seed 3" \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SDPO/qwen3_5_27b_train_val_acc.png
+
+    
     # qwen3.5-9b verl-upgrade GRPO 
     python scripts/plot_training_metrics.py \
     /checkpoint/agentic-models/winnieyangwn/SDPO/GRPO/logs/5474196.log \
@@ -87,6 +135,24 @@ Usage:
     --labels "Seed 1" "Seed 2"  "Seed 3"  "Seed 4" "Seed 5"  "Seed 6" \
     --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/GRPO/qwen3_5_27b_train_val_acc.png
 
+    --------------------------------------------------------
+    
+    # qwen3.5-9b  self-teacher GRPO qwen3.5-9b
+    python scripts/plot_training_metrics.py \
+        /checkpoint/agentic-models/winnieyangwn/SDPO/SELF_TEACHER_GRPO/logs/5667497.log \
+        /checkpoint/agentic-models/winnieyangwn/SDPO/SELF_TEACHER_GRPO/logs/5667498.log \
+        /checkpoint/agentic-models/winnieyangwn/SDPO/SELF_TEACHER_GRPO/logs/5667499.log \
+        --labels "Seed 1" "Seed 2" "Seed 3" \
+        --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SELF_TEACHER_GRPO/qwen3_5_9b_train_val_acc.png
+
+    # qwen3.5-27b  self-teacher GRPO qwen3.5-27b
+    python scripts/plot_training_metrics.py \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SELF_TEACHER_GRPO_27B/logs/5668036.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SELF_TEACHER_GRPO_27B/logs/5668037.log \
+    /checkpoint/agentic-models/winnieyangwn/SDPO/SELF_TEACHER_GRPO_27B/logs/5668038.log \
+    --labels "Seed 1" "Seed 2"  "Seed 3"  \
+    --output /checkpoint/agentic-models/winnieyangwn/output/SDPO/SELF_TEACHER_GRPO_27B/qwen3_5_27b_train_val_acc.png
+
 """
 
 import argparse
@@ -98,6 +164,17 @@ from typing import Dict, List, Tuple, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+# Mapping from internal metric names to human-readable display names for plots
+METRIC_DISPLAY_NAMES = {
+    'rollout_corr/kl': 'kl/rollout_vs_training',
+    'self_distillation/kl_student_teacher': 'kl/student_vs_teacher (SDPO)',
+    'self_distillation/success_sample_fraction': 'sdpo/success_per_sample',
+    'self_distillation/success_group_fraction': 'sdpo/success_per_group',
+    'self_distillation/feedback_used_fraction': 'sdpo/feedback_used',
+    'self_distillation/feedback_available_fraction': 'sdpo/feedback_available',
+}
 
 
 def get_log_path(algorithm: str, slurm_id: str) -> str:
@@ -202,17 +279,40 @@ def get_default_metrics(available_metrics: set) -> List[str]:
     """Dynamically select default metrics based on what's available in the log."""
     metrics = []
     
-    # Always include these if available
-    for m in ['critic/score/mean', 'actor/pg_loss']:
+    # Core training metrics (in order of importance) - shared across all algorithms
+    core_metrics = [
+        'critic/score/mean',                          # Primary reward signal
+        'actor/pg_loss',                              # Policy gradient loss
+        'actor/entropy',                              # Policy diversity (avoid collapse)
+        'actor/grad_norm',                            # Training stability
+        'rollout_corr/kl',                            # KL from reference policy
+        'response_length/mean',                       # Response verbosity
+    ]
+    
+    for m in core_metrics:
         if m in available_metrics:
             metrics.append(m)
+    
+    # SDPO-specific metrics (only if SDPO is being used)
+    is_sdpo = 'self_distillation/success_sample_fraction' in available_metrics
+    if is_sdpo:
+        sdpo_metrics = [
+            'self_distillation/kl_student_teacher',        # SDPO: student-teacher KL divergence
+            'self_distillation/success_sample_fraction',   # SDPO: success rate per sample
+            'self_distillation/success_group_fraction',    # SDPO: success rate per group
+            'self_distillation/feedback_used_fraction',    # SDPO: how much feedback is utilized
+            'self_distillation/feedback_available_fraction', # SDPO: feedback availability
+        ]
+        for m in sdpo_metrics:
+            if m in available_metrics:
+                metrics.append(m)
     
     # Flexible pass@k metrics - try val-core first, then val-aux
     # For each metric type, find the best available k value
     metric_patterns = [
         # (display_priority, patterns_to_try)
+        ['val-core/livecodebench/acc/mean@{k}', 'val-aux/livecodebench/acc/mean@{k}'],
         ['val-core/livecodebench/acc/best@{k}/mean', 'val-aux/livecodebench/acc/best@{k}/mean'],
-        ['val-core/livecodebench/acc/maj@{k}/mean', 'val-aux/livecodebench/acc/maj@{k}/mean'],
         ['val-core/livecodebench/acc/worst@{k}/mean', 'val-aux/livecodebench/acc/worst@{k}/mean'],
         ['val-core/livecodebench/score/mean@{k}', 'val-aux/livecodebench/score/mean@{k}'],
     ]
@@ -280,8 +380,9 @@ def plot_metrics(
                 ax.plot(steps, values, label=label, color=color, alpha=0.8)
         
         ax.set_xlabel('Training Step')
-        ax.set_ylabel(metric_name.split('/')[-1])
-        ax.set_title(metric_name)
+        display_name = METRIC_DISPLAY_NAMES.get(metric_name, metric_name)
+        ax.set_ylabel(display_name.split('/')[-1])
+        ax.set_title(display_name)
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
     

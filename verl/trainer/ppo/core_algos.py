@@ -2466,6 +2466,10 @@ def compute_self_distillation_loss(
         loss_agg_mode=loss_agg_mode,
         batch_num_tokens=loss_mask.sum().clamp(min=1.0),
     )
+
+    # Log KL divergence between student and teacher
+    metrics["self_distillation/kl_student_teacher"] = loss.detach().item()
+
     return loss, metrics
 
 

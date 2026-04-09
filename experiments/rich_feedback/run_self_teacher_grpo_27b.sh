@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./run_sdpo.sh [--dry-run]
+# Usage: ./run_self_teacher_grpo_27b.sh [--dry-run]
 
 DRY_RUN=false
 if [[ "$1" == "--dry-run" ]]; then
@@ -13,18 +13,17 @@ fi
 # =============================================================================
 
 # Base settings
-CONFIG_NAME="sdpo"
-BASE_JOB_NAME="SDPO"
+CONFIG_NAME="self_teacher_grpo"
+BASE_JOB_NAME="SELF_TEACHER_GRPO_27B"
 
-ACCOUNT="agentic-models" #"aira_ws2" # #
-QOS="h200_agentic-models_high" #"h200_coding_shared"  #  # 
-
+ACCOUNT="agentic-models" # "aira_ws1" # "aira_ws2" # #
+QOS="h200_agentic-models_high" # "h200_aira_ws1_high" # "h200_coding_shared" #
 
 DATA_PATHS=(
     "lcb_v6"
 )
 
-# Fixed Slurm resources
+# Fixed Slurm resources (2 nodes for 27B model)
 NODES=2
 TIME="168:00:00"
 NTASKS_PER_NODE=1
@@ -34,17 +33,11 @@ CPUS_PER_TASK=96
 
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
-ROLLOUT_BATCH_SIZES=(8)
-MINI_BATCH_SIZES=(16) # can be 32
+ROLLOUT_BATCH_SIZES=(32)
+MINI_BATCH_SIZES=(16)
+
 LRS=(1e-6)
-
-# SDPO-specific parameters
-# 0: forward KL, 0.5: Jensen-Shannon divergence, 1: reverse KL
-ALPHAS=(1.0)
-DONTS_REPROMPT_ON_SELF_SUCCESS=(True)
 SEEDS=(42 123 456)
-# SEEDS=(456)
-
 SAVE_FREQ=50
 
 # Directory to save raw validation generations (JSONL format)
@@ -53,8 +46,9 @@ VAL_DATA_DIR="/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/eval"
 MODEL_PATHS=(
     "/checkpoint/agentic-models/winnieyangwn/models/Qwen3.5-27B"
 )
+
 # =============================================================================
-# JOB SUBMISSION FUNCTION
+# JOB SUBMISSION FUNCTION (Multi-node with Ray cluster)
 # =============================================================================
 
 submit_job() {
@@ -178,25 +172,23 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
         for LR in "${LRS[@]}"; do
             for MODEL_PATH in "${MODEL_PATHS[@]}"; do
                 for MINI_BATCH_SIZE in "${MINI_BATCH_SIZES[@]}"; do
-                    for ALPHA in "${ALPHAS[@]}"; do
-                        for DONTS_REPROMPT_ON_SELF_SUCCESS in "${DONTS_REPROMPT_ON_SELF_SUCCESS[@]}"; do
-                            for SEED in "${SEEDS[@]}"; do
-                                for DATA_PATH in "${DATA_PATHS[@]}"; do
-                                    # 1. Construct the experiment name (must be unique)
-                                    MODEL_NAME="${MODEL_PATH##*/}"  # Extract name after last "/" (e.g., Qwen/Qwen3-8B -> Qwen3-8B)
-                                    EXP_NAME="FINAL-SDPO-mbs-${MINI_BATCH_SIZE}-train${TRAIN_BATCH_SIZE}-rollout${ROLLOUT_BATCH_SIZE}-lr${LR}-alpha${ALPHA}-dross${DONTS_REPROMPT_ON_SELF_SUCCESS}-seed${SEED}-model${MODEL_NAME}"
+                    for SEED in "${SEEDS[@]}"; do
+                        for DATA_PATH in "${DATA_PATHS[@]}"; do
+                            # 1. Construct the experiment name (must be unique)
+                            MODEL_NAME="${MODEL_PATH##*/}"  # Extract name after last "/" (e.g., Qwen/Qwen3-8B -> Qwen3-8B)
+                            EXP_NAME="SELF-TEACHER-GRPO-27B-mbs-${MINI_BATCH_SIZE}-train${TRAIN_BATCH_SIZE}-rollout${ROLLOUT_BATCH_SIZE}-lr${LR}-seed${SEED}-model${MODEL_NAME}"
 
-                                    # 2. Construct the arguments string to pass to the training script
-                                    # Format: key=value key2=value2 ...
-                                    # Override vars that use env var interpolation to ensure they work in Ray
-                                    ARGS="vars.task=$DATA_PATH \
+                            # 2. Construct the arguments string to pass to the training script
+                            # Format: key=value key2=value2 ...
+                            # Override vars that use env var interpolation to ensure they work in Ray
+                            ARGS="vars.task=$DATA_PATH \
 vars.dir=/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/outputs \
 vars.log_dir=/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/logs \
 vars.ckpt_dir=/checkpoint/agentic-models/winnieyangwn/SDPO/$BASE_JOB_NAME/checkpoints \
 custom_reward_function.path=/home/winnieyangwn/SDPO/verl/utils/reward_score/feedback/__init__.py \
 data.train_batch_size=$TRAIN_BATCH_SIZE \
 trainer.n_gpus_per_node=$GPUS_PER_NODE \
-trainer.group_name=SDPO-rich-feedback \
+trainer.group_name=SELF-TEACHER-GRPO-27B-rich-feedback \
 trainer.experiment_name=$EXP_NAME \
 trainer.test_freq=5 \
 trainer.validation_save_freq=50 \
@@ -218,16 +210,18 @@ trainer.nnodes=2 \
 trainer.save_freq=$SAVE_FREQ \
 actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
 actor_rollout_ref.model.enable_gradient_checkpointing=True \
-actor_rollout_ref.actor.self_distillation.distillation_topk=20 \
-actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=${DONTS_REPROMPT_ON_SELF_SUCCESS} \
-actor_rollout_ref.actor.self_distillation.alpha=$ALPHA \
-actor_rollout_ref.actor.self_distillation.teacher_update_rate=0.01 \
-actor_rollout_ref.actor.self_distillation.include_environment_feedback=True"
+algorithm.self_teacher.enable=true \
+algorithm.self_teacher.privilege_fraction=0.5 \
+algorithm.self_teacher.privilege_fraction_decay=linear \
+algorithm.self_teacher.accuracy_threshold=0.8 \
+algorithm.self_teacher.privilege_penalty.enable=true \
+algorithm.self_teacher.privilege_penalty.penalty_min=0.02 \
+algorithm.self_teacher.privilege_penalty.penalty_max=0.10 \
+algorithm.self_teacher.privilege_penalty.schedule=late_ramp \
+algorithm.self_teacher.privilege_penalty.apply_to_grpo=true"
 
-                                    # 3. Submit
-                                    submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"
-                                done
-                            done
+                            # 3. Submit
+                            submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"
                         done
                     done
                 done

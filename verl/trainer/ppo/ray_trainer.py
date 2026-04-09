@@ -324,6 +324,11 @@ class RayPPOTrainer:
 
         self.checkpoint_manager = None
 
+        # Initialize persistent cache for best solutions per question
+        # Structure: {question_index: {"response": str, "score": float, "step": int}}
+        self.best_solutions_cache: dict[str, dict] = {}
+        self._load_best_solutions_cache()
+
     def _create_dataloader(self, train_dataset, val_dataset, collate_fn, train_sampler: Optional[Sampler]):
         """
         Creates the train and validation dataloaders.
@@ -524,6 +529,422 @@ class RayPPOTrainer:
             if seq_scores[idx] >= success_reward_threshold:
                 success_by_uid[uid].append(idx)
         return success_by_uid
+
+    def _update_best_solutions_cache(
+        self, 
+        batch: DataProto, 
+        reward_tensor: torch.Tensor,
+        privilege_mask: Optional[torch.Tensor] = None
+    ) -> dict[str, float]:
+        """
+        Update the persistent cache with the best solution for each question.
+        
+        Uses acc (continuous, 0.0-1.0) rather than binary score for comparison,
+        allowing solutions that pass most tests to qualify for privilege injection.
+        
+        Privileged solutions are penalized: they must exceed the cached acc by
+        the current penalty margin to displace an existing entry. This increasingly
+        favors unprivileged solutions as training progresses.
+        
+        Args:
+            batch: The batch containing responses and question indices
+            reward_tensor: Tensor of reward scores for each response
+            privilege_mask: Optional boolean tensor indicating privileged samples
+            
+        Returns:
+            dict with metrics about cache updates
+        """
+        import hashlib
+        
+        responses = batch.batch["responses"]
+        
+        # Get question indices - use 'index' field from dataset if available
+        if "index" in batch.non_tensor_batch:
+            question_indices = batch.non_tensor_batch["index"]
+        else:
+            # Fallback: try to get from extra_info
+            extra_infos = batch.non_tensor_batch.get("extra_info", [{}] * len(batch))
+            question_indices = [str(info.get("index", i)) for i, info in enumerate(extra_infos)]
+        
+        # Get acc from non_tensor_batch (populated by compute_score after reward computation)
+        # Key is "acc", NOT "accuracy". Falls back to binary score if acc not available.
+        accuracies = batch.non_tensor_batch.get("acc", None)
+        if accuracies is None:
+            # Fallback to binary score
+            seq_scores = reward_tensor.sum(dim=-1).detach().cpu()
+            accuracies = seq_scores.numpy()
+        elif isinstance(accuracies, list):
+            accuracies = np.array(accuracies)
+        
+        # Get extra_info for descriptions (for verification)
+        extra_infos = batch.non_tensor_batch.get("extra_info", [{}] * len(batch))
+        if isinstance(extra_infos, np.ndarray):
+            extra_infos = extra_infos.tolist()
+        
+        # Get current penalty for privileged solutions
+        penalty = self._get_cache_penalty()
+        
+        num_updates = 0
+        num_new = 0
+        
+        for idx in range(len(batch)):
+            question_idx = str(question_indices[idx])
+            
+            # Get acc (continuous) from non_tensor_batch
+            acc = float(accuracies[idx]) if idx < len(accuracies) else 0.0
+            
+            # Check if this sample was privileged
+            is_privileged = bool(privilege_mask[idx]) if privilege_mask is not None else False
+            
+            # Apply penalty to privileged samples for cache comparison
+            # Unprivileged solutions win ties; privileged must exceed by penalty margin
+            effective_acc = acc - (penalty if is_privileged else 0.0)
+            
+            # Get description from extra_info
+            extra_info = extra_infos[idx] if idx < len(extra_infos) and isinstance(extra_infos[idx], dict) else {}
+            description = extra_info.get("description", "")
+            
+            # Get current cached acc for comparison (use raw acc, not penalized)
+            cached_acc = self.best_solutions_cache.get(question_idx, {}).get("acc", -float("inf"))
+            
+            # Check if should update (compare effective_acc against cached raw acc)
+            if question_idx not in self.best_solutions_cache:
+                num_new += 1
+                should_update = True
+            elif effective_acc > cached_acc:
+                num_updates += 1
+                should_update = True
+            else:
+                should_update = False
+            
+            if should_update:
+                self.best_solutions_cache[question_idx] = {
+                    "response": self.tokenizer.decode(responses[idx], skip_special_tokens=True),
+                    "acc": acc,  # Store raw acc, not penalized
+                    "step": self.global_steps,
+                    "was_privileged": is_privileged,  # Track provenance
+                    "description_hash": hashlib.md5(description[:500].encode()).hexdigest() if description else "",
+                    "description_preview": description[:100] if description else "",
+                }
+        
+        return {
+            "best_solutions_cache/num_new": num_new,
+            "best_solutions_cache/num_updates": num_updates,
+            "best_solutions_cache/total_cached": len(self.best_solutions_cache),
+        }
+
+    def _get_best_solutions_cache_path(self) -> str:
+        """Get the path for saving/loading the best solutions cache."""
+        output_dir = self.config.trainer.default_local_dir
+        return os.path.join(output_dir, "best_solutions_cache.json")
+
+    def _load_best_solutions_cache(self):
+        """Load the best solutions cache from disk if it exists."""
+        cache_path = self._get_best_solutions_cache_path()
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r") as f:
+                    self.best_solutions_cache = json.load(f)
+                print(f"Loaded best solutions cache with {len(self.best_solutions_cache)} entries from {cache_path}")
+            except Exception as e:
+                print(f"Warning: Failed to load best solutions cache: {e}")
+                self.best_solutions_cache = {}
+
+    def _save_best_solutions_cache(self):
+        """Save the best solutions cache to disk."""
+        cache_path = self._get_best_solutions_cache_path()
+        try:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            with open(cache_path, "w") as f:
+                json.dump(self.best_solutions_cache, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Failed to save best solutions cache: {e}")
+
+    # =========================================================================
+    # Self-Teacher GRPO Methods
+    # =========================================================================
+
+    def _get_current_privilege_fraction(self) -> float:
+        """
+        Compute the privilege fraction at the current training step.
+        
+        Linear decay: fraction(t) = fraction_0 * max(0, 1 - t / total_steps)
+        
+        Note: the *effective* fraction is further reduced by cache coverage
+        (not all questions have qualifying cached solutions), which naturally
+        provides a warmup: near-zero early when cache is empty, rising as
+        the cache populates, then declining as the configured fraction decays.
+        This produces a bell-shaped effective privilege curve without any
+        explicit warmup logic.
+        """
+        self_teacher_cfg = self.config.algorithm.get("self_teacher", {})
+        if not self_teacher_cfg.get("enable", False):
+            return 0.0
+        
+        fraction_0 = self_teacher_cfg.get("privilege_fraction", 0.5)
+        decay = self_teacher_cfg.get("privilege_fraction_decay", "none")
+        
+        if decay == "linear":
+            total_steps = self.total_training_steps
+            t = self.global_steps
+            return fraction_0 * max(0.0, 1.0 - t / total_steps) if total_steps > 0 else fraction_0
+        
+        return fraction_0  # "none" or unrecognized → constant
+
+    def _get_cache_penalty(self) -> float:
+        """
+        Compute the privilege penalty at the current training step.
+        
+        Privileged solutions must exceed cached acc by this margin to enter cache.
+        This increasingly favors unprivileged solutions as training progresses.
+        """
+        self_teacher_cfg = self.config.algorithm.get("self_teacher", {})
+        if not self_teacher_cfg.get("enable", False):
+            return 0.0
+        
+        penalty_cfg = self_teacher_cfg.get("privilege_penalty", {})
+        
+        if not penalty_cfg.get("enable", True):
+            return 0.0
+        
+        p_min = penalty_cfg.get("penalty_min", 0.02)
+        p_max = penalty_cfg.get("penalty_max", 0.10)
+        schedule = penalty_cfg.get("schedule", "late_ramp")
+        
+        total_steps = self.total_training_steps
+        t = self.global_steps / total_steps if total_steps > 0 else 0.0
+        
+        if schedule == "linear":
+            return p_min + (p_max - p_min) * t
+        
+        elif schedule == "cosine":
+            import math
+            return p_min + (p_max - p_min) * (1 - math.cos(math.pi * t)) / 2
+        
+        elif schedule == "late_ramp":
+            # Flat early, sharp increase in final third
+            if t < 0.66:
+                return p_min
+            else:
+                return p_min + (p_max - p_min) * (t - 0.66) / 0.34
+        
+        return p_min  # "none" or unrecognized
+
+    def _apply_privilege_penalty(
+        self, 
+        scores: torch.Tensor,
+        privilege_mask: torch.Tensor,
+        penalty: float
+    ) -> torch.Tensor:
+        """
+        Discount scores from privileged samples before advantage computation.
+        
+        This creates incentive to succeed without hints:
+        - Same acc without hint > same acc with hint
+        - Model learns to internalize reasoning rather than rely on hints
+        """
+        effective_scores = scores.clone()
+        effective_scores[privilege_mask] -= penalty
+        return effective_scores
+
+    def _should_give_privilege(self, question_idx: str, threshold: float) -> bool:
+        """Check if question qualifies for privilege info based on accuracy threshold."""
+        if question_idx not in self.best_solutions_cache:
+            return False
+        cached = self.best_solutions_cache[question_idx]
+        # Use 'acc' field, falling back to 'score' for backward compatibility
+        cached_acc = cached.get("acc", cached.get("score", 0.0))
+        return cached_acc >= threshold
+
+    def _verify_question_match(self, batch: DataProto, idx: int, question_idx: str) -> bool:
+        """Verify the question description matches the cached entry."""
+        import hashlib
+        
+        cached = self.best_solutions_cache.get(question_idx)
+        if not cached or "description_hash" not in cached:
+            return True  # No verification possible, allow
+        
+        extra_info = batch.non_tensor_batch.get("extra_info", [{}] * len(batch))
+        if isinstance(extra_info, np.ndarray):
+            extra_info = extra_info.tolist()
+        
+        current_description = ""
+        if idx < len(extra_info) and isinstance(extra_info[idx], dict):
+            current_description = extra_info[idx].get("description", "")
+        
+        if not current_description:
+            return True  # No description to verify, allow
+        
+        current_hash = hashlib.md5(current_description[:500].encode()).hexdigest()
+        if current_hash != cached["description_hash"]:
+            print(f"WARNING: Question {question_idx} description mismatch!")
+            print(f"  Cached preview: {cached.get('description_preview', 'N/A')}")
+            print(f"  Current preview: {current_description[:100]}")
+            return False
+        
+        return True
+
+    def _add_privilege_to_prompt(
+        self, 
+        batch: DataProto, 
+        idx: int, 
+        solution: str, 
+        config: dict
+    ) -> None:
+        """Modify raw_prompt at idx to include the cached solution."""
+        solution_template = config.get("solution_template", 
+            "\n\nCorrect solution:\n\n{successful_previous_attempt}\n\n")
+        reprompt_template = config.get("reprompt_template",
+            "{prompt}{solution}Correctly solve the original question.\n")
+        
+        # Get current prompt
+        raw_prompt = batch.non_tensor_batch["raw_prompt"][idx]
+        
+        # raw_prompt is list of messages: [{"role": "system", ...}, {"role": "user", "content": "..."}]
+        # Modify the last user message
+        original_content = raw_prompt[-1]["content"]
+        solution_section = solution_template.format(successful_previous_attempt=solution)
+        new_content = reprompt_template.format(prompt=original_content, solution=solution_section)
+        
+        # Create modified prompt (don't mutate original in case of shared references)
+        import copy
+        new_raw_prompt = copy.deepcopy(raw_prompt[:-1]) + [{"role": "user", "content": new_content}]
+        batch.non_tensor_batch["raw_prompt"][idx] = new_raw_prompt
+
+    def _inject_privilege_info(self, batch: DataProto) -> tuple[torch.Tensor, int]:
+        """
+        Inject privilege information into qualifying prompts before generation.
+        
+        IMPORTANT: This method modifies `batch.non_tensor_batch["raw_prompt"]` which
+        must be tokenized AFTER this call. This is verified to work with the agent loop
+        architecture where tokenization happens inside `generate_sequences()` via
+        `apply_chat_template()`.
+        
+        Returns:
+            tuple of (privilege_mask, num_questions_with_privilege):
+                privilege_mask: Boolean tensor indicating which samples got privilege
+                num_questions_with_privilege: Count of questions that had qualifying cached solutions
+        """
+        self_teacher_cfg = self.config.algorithm.get("self_teacher", {})
+        if not self_teacher_cfg.get("enable", False):
+            return torch.zeros(len(batch), dtype=torch.bool), 0
+        
+        # DEFENSIVE CHECK: Ensure prompts are not already tokenized
+        # If input_ids exists and has non-trivial content, tokenization already happened
+        if batch.batch is not None and "input_ids" in batch.batch:
+            if batch.batch["input_ids"].numel() > 0:
+                raise RuntimeError(
+                    "Self-Teacher GRPO: input_ids already exists in batch before privilege injection. "
+                    "This indicates prompts were pre-tokenized, which would cause privilege injection "
+                    "to have no effect. Ensure you are using the agent loop rollout backend."
+                )
+        
+        rollout_n = self.config.actor_rollout_ref.rollout.n
+        privilege_fraction = self._get_current_privilege_fraction()  # decayed value
+        threshold = self_teacher_cfg.get("accuracy_threshold", 0.8)
+        num_privileged = int(rollout_n * privilege_fraction)
+        
+        batch_size = len(batch)
+        privilege_mask = torch.zeros(batch_size, dtype=torch.bool)
+        
+        # Get question indices
+        if "index" in batch.non_tensor_batch:
+            question_indices = batch.non_tensor_batch["index"]
+        else:
+            extra_infos = batch.non_tensor_batch.get("extra_info", [{}] * batch_size)
+            question_indices = [str(info.get("index", i)) for i, info in enumerate(extra_infos)]
+        
+        num_questions_with_privilege = 0
+        
+        for group_start in range(0, batch_size, rollout_n):
+            question_idx = str(question_indices[group_start])
+            
+            # Check if this question qualifies for privilege
+            if not self._should_give_privilege(question_idx, threshold):
+                continue
+            
+            # Verify question match
+            if not self._verify_question_match(batch, group_start, question_idx):
+                continue
+            
+            num_questions_with_privilege += 1
+            cached_solution = self.best_solutions_cache[question_idx]["response"]
+            
+            # Assign privilege to interleaved positions
+            for j in range(num_privileged):
+                idx = group_start + j * 2  # Interleave: 0, 2, 4, 6
+                if idx < group_start + rollout_n:
+                    privilege_mask[idx] = True
+                    self._add_privilege_to_prompt(batch, idx, cached_solution, self_teacher_cfg)
+        
+        # Log sample privileged prompt for debugging
+        if privilege_mask.any() and self.global_steps % 50 == 0:
+            first_privileged_idx = privilege_mask.nonzero()[0].item()
+            print(f"[Step {self.global_steps}] Sample privileged prompt (truncated):\n"
+                  f"{batch.non_tensor_batch['raw_prompt'][first_privileged_idx][-1]['content'][:500]}...")
+        
+        return privilege_mask, num_questions_with_privilege
+
+    def _compute_self_teacher_metrics(
+        self, 
+        batch: DataProto, 
+        reward_tensor: torch.Tensor,
+        privilege_mask: torch.Tensor,
+        num_questions_with_privilege: int,
+        threshold: float
+    ) -> dict[str, float]:
+        """Compute metrics for self-teacher GRPO."""
+        # Get acc from non_tensor_batch (continuous metric)
+        accuracies = batch.non_tensor_batch.get("acc", None)
+        if accuracies is None:
+            # Fallback to binary score
+            seq_scores = reward_tensor.sum(dim=-1).detach().cpu()
+            accuracies = seq_scores.numpy()
+        elif isinstance(accuracies, list):
+            accuracies = np.array(accuracies)
+        accuracies = torch.tensor(accuracies, dtype=torch.float32)
+        
+        # Also get binary reward for reference
+        seq_scores = reward_tensor.sum(dim=-1).detach().cpu()
+        
+        privileged_accs = accuracies[privilege_mask]
+        unprivileged_accs = accuracies[~privilege_mask]
+        privileged_scores = seq_scores[privilege_mask]
+        unprivileged_scores = seq_scores[~privilege_mask]
+        
+        metrics = {
+            "self_teacher/privilege_fraction_actual": privilege_mask.float().mean().item(),
+            "self_teacher/privilege_fraction_configured": self._get_current_privilege_fraction(),
+            "self_teacher/questions_with_privilege": num_questions_with_privilege,
+            # Acc metrics (continuous)
+            "self_teacher/privileged_mean_acc": privileged_accs.mean().item() if len(privileged_accs) > 0 else 0.0,
+            "self_teacher/unprivileged_mean_acc": unprivileged_accs.mean().item() if len(unprivileged_accs) > 0 else 0.0,
+            "self_teacher/privileged_above_threshold": (privileged_accs >= threshold).float().mean().item() if len(privileged_accs) > 0 else 0.0,
+            "self_teacher/unprivileged_above_threshold": (unprivileged_accs >= threshold).float().mean().item() if len(unprivileged_accs) > 0 else 0.0,
+            # Binary reward metrics (for reference)
+            "self_teacher/privileged_mean_reward": privileged_scores.mean().item() if len(privileged_scores) > 0 else 0.0,
+            "self_teacher/unprivileged_mean_reward": unprivileged_scores.mean().item() if len(unprivileged_scores) > 0 else 0.0,
+        }
+        
+        # Cache statistics
+        if self.best_solutions_cache:
+            cached_accs = [v.get("acc", v.get("score", 0.0)) for v in self.best_solutions_cache.values()]
+            metrics["best_solutions_cache/mean_cached_acc"] = sum(cached_accs) / len(cached_accs)
+            
+            # Track how many cache entries came from privileged rollouts
+            # This should decline over training if transfer is working
+            num_privileged_entries = sum(
+                1 for v in self.best_solutions_cache.values() 
+                if v.get("was_privileged", False)
+            )
+            metrics["best_solutions_cache/privileged_fraction"] = (
+                num_privileged_entries / len(self.best_solutions_cache)
+            )
+        
+        # Current penalty value
+        metrics["self_teacher/privilege_penalty"] = self._get_cache_penalty()
+        
+        return metrics
 
     @staticmethod
     def _remove_thinking_trace(text: str) -> str:
@@ -1135,6 +1556,9 @@ class RayPPOTrainer:
         dataloader_state_dict = self.train_dataloader.state_dict()
         torch.save(dataloader_state_dict, dataloader_local_path)
 
+        # save best solutions cache
+        self._save_best_solutions_cache()
+
         # latest checkpointed iteration tracker (for atomic usage)
         if (
             hasattr(self.config.actor_rollout_ref.actor.checkpoint, "async_save")
@@ -1560,6 +1984,18 @@ class RayPPOTrainer:
                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                 )
 
+                # Self-Teacher GRPO: Inject privilege info before generation
+                self_teacher_cfg = self.config.algorithm.get("self_teacher", {})
+                if self_teacher_cfg.get("enable", False):
+                    privilege_mask, num_questions_with_privilege = self._inject_privilege_info(gen_batch_output)
+                    # IMPORTANT: Store as instance variables, NOT on batch
+                    # because generate_sequences() returns a NEW DataProto and doesn't preserve batch data
+                    self._current_privilege_mask = privilege_mask
+                    self._current_num_questions_with_privilege = num_questions_with_privilege
+                else:
+                    self._current_privilege_mask = None
+                    self._current_num_questions_with_privilege = 0
+
                 is_last_step = self.global_steps >= self.total_training_steps
                 with marked_timer("step", timing_raw):
                     # generate a batch
@@ -1632,6 +2068,24 @@ class RayPPOTrainer:
 
                         # extract reward_tensor and reward_extra_infos_dict for training
                         reward_tensor, reward_extra_infos_dict = extract_reward(batch)
+
+                        # Update best solutions cache with best response per question
+                        # Pass privilege_mask for self-teacher penalty computation
+                        cache_metrics = self._update_best_solutions_cache(
+                            batch, reward_tensor, 
+                            privilege_mask=self._current_privilege_mask
+                        )
+                        metrics.update(cache_metrics)
+
+                        # Self-Teacher GRPO: Compute and log metrics
+                        if self._current_privilege_mask is not None:
+                            self_teacher_cfg = self.config.algorithm.get("self_teacher", {})
+                            self_teacher_metrics = self._compute_self_teacher_metrics(
+                                batch, reward_tensor, self._current_privilege_mask,
+                                self._current_num_questions_with_privilege,
+                                self_teacher_cfg.get("accuracy_threshold", 0.8)
+                            )
+                            metrics.update(self_teacher_metrics)
 
                     # Operating Mode Selection:
                     # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)

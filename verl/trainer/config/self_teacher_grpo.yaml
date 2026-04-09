@@ -1,0 +1,64 @@
+defaults:
+  - ppo_trainer
+  - user
+  - _self_
+
+# MAX_PROMPT_LENGTH=12288  (increased to accommodate injected solutions)
+# MAX_RESPONSE_LENGTH=8192
+# MAX_FEEDBACK_LENGTH=8192
+# TEMPLATE_LENGTH=512  # heuristic upper bound
+# MAX_MODEL_LEN = TEMPLATE_LENGTH + MAX_PROMPT_LENGTH + MAX_FEEDBACK_LENGTH + MAX_RESPONSE_LENGTH
+max_model_len: 29184  # Larger to accommodate solution in prompt
+
+actor_rollout_ref:
+  actor:
+    ppo_mini_batch_size: 16
+  rollout:
+    n: 8
+    calculate_log_probs: True
+
+algorithm:
+  adv_estimator: grpo
+  norm_adv_by_std_in_grpo: False
+  rollout_correction:
+    rollout_is: token
+    rollout_is_threshold: 2.0
+  
+  # Self-teacher GRPO configuration
+  self_teacher:
+    enable: true
+    
+    # Privilege fraction: how many rollouts get hints
+    privilege_fraction: 0.5           # Initial fraction of rollouts that get privilege
+    privilege_fraction_decay: linear  # Decay schedule: "linear" or "none"
+    # privilege_fraction decays linearly from privilege_fraction → 0 over total training steps.
+    # Effective fraction is further modulated by cache coverage (questions with qualifying
+    # cached solutions), giving a natural bell-shaped curve: near-zero early (empty cache),
+    # rising as cache populates, then declining as configured fraction decays.
+    
+    accuracy_threshold: 0.8           # Minimum accuracy (fraction of tests passed) to use cached solution
+                                      # Note: accuracy is continuous [0,1], not binary score
+    
+    # Privilege penalty: discount privileged solutions to favor unprivileged
+    privilege_penalty:
+      enable: true
+      penalty_min: 0.02               # Early training: minimal penalty
+      penalty_max: 0.10               # Late training: strong preference for unprivileged
+      schedule: late_ramp             # "none", "linear", "cosine", or "late_ramp"
+      # late_ramp: flat at p_min for first 66% of training, then ramps to p_max
+      apply_to_grpo: true             # Also apply penalty to GRPO advantage computation
+    
+    # Prompt modification templates
+    solution_template: |
+      
+      Correct solution:
+      
+      {successful_previous_attempt}
+      
+    reprompt_template: "{prompt}{solution}Correctly solve the original question.\n"
+
+data:
+  train_batch_size: 32
+
+trainer:
+  val_before_train: False

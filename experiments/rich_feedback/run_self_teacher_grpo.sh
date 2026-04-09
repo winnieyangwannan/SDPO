@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./run_baseline_grpo.sh [--dry-run]
+# Usage: ./run_self_teacher_grpo.sh [--dry-run]
 
 DRY_RUN=false
 if [[ "$1" == "--dry-run" ]]; then
@@ -13,11 +13,11 @@ fi
 # =============================================================================
 
 # Base settings
-CONFIG_NAME="baseline_grpo"
-BASE_JOB_NAME="GRPO"
+CONFIG_NAME="self_teacher_grpo"
+BASE_JOB_NAME="SELF_TEACHER_GRPO"
 
-ACCOUNT="agentic-models" # "aira_ws2" # #
-QOS="h200_agentic-models_high" # "h200_coding_shared" # # "h200_aira_ws1_high" 
+ACCOUNT="aira_ws1" # "agentic-models" # "aira_ws2" # #
+QOS="h200_aira_ws1_high" # "h200_agentic-models_high" # "h200_coding_shared" # # "h200_aira_ws1_high" 
 
 DATA_PATHS=(
     "lcb_v6"
@@ -33,7 +33,7 @@ CPUS_PER_TASK=96
 
 # Sweep Parameters
 TRAIN_BATCH_SIZES=(32)
-ROLLOUT_BATCH_SIZES=(8)
+ROLLOUT_BATCH_SIZES=(32)
 MINI_BATCH_SIZES=(16)
 
 LRS=(1e-6)
@@ -111,13 +111,13 @@ for TRAIN_BATCH_SIZE in "${TRAIN_BATCH_SIZES[@]}"; do
                         for DATA_PATH in "${DATA_PATHS[@]}"; do
                             # 1. Construct the experiment name (must be unique)
                             MODEL_NAME="${MODEL_PATH##*/}"  # Extract name after last "/" (e.g., Qwen/Qwen3-8B -> Qwen3-8B)
-                            EXP_NAME="FINAL-GRPO-mbs-${MINI_BATCH_SIZE}-train${TRAIN_BATCH_SIZE}-rollout${ROLLOUT_BATCH_SIZE}-lr${LR}-seed${SEED}-model${MODEL_NAME}"
+                            EXP_NAME="SELF-TEACHER-GRPO-mbs-${MINI_BATCH_SIZE}-train${TRAIN_BATCH_SIZE}-rollout${ROLLOUT_BATCH_SIZE}-lr${LR}-seed${SEED}-model${MODEL_NAME}"
 
                             # 2. Construct the arguments string to pass to the training script
                             # Format: key=value key2=value2 ...
                             ARGS="data.train_batch_size=$TRAIN_BATCH_SIZE \
 trainer.n_gpus_per_node=$GPUS_PER_NODE \
-trainer.group_name=GRPO-rich-feedback \
+trainer.group_name=SELF-TEACHER-GRPO-rich-feedback \
 trainer.test_freq=5 \
 trainer.validation_save_freq=50 \
 trainer.validation_data_dir=$VAL_DATA_DIR/$EXP_NAME \
@@ -134,7 +134,16 @@ actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
 actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
 actor_rollout_ref.rollout.val_kwargs.do_sample=True \
 trainer.total_training_steps=300 \
-trainer.save_freq=$SAVE_FREQ"
+trainer.save_freq=$SAVE_FREQ \
+algorithm.self_teacher.enable=true \
+algorithm.self_teacher.privilege_fraction=0.5 \
+algorithm.self_teacher.privilege_fraction_decay=linear \
+algorithm.self_teacher.accuracy_threshold=0.8 \
+algorithm.self_teacher.privilege_penalty.enable=true \
+algorithm.self_teacher.privilege_penalty.penalty_min=0.02 \
+algorithm.self_teacher.privilege_penalty.penalty_max=0.10 \
+algorithm.self_teacher.privilege_penalty.schedule=late_ramp \
+algorithm.self_teacher.privilege_penalty.apply_to_grpo=true"
 
                             # 3. Submit
                             submit_job "$EXP_NAME" "$ARGS" "$DATA_PATH"
